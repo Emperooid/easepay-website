@@ -49,9 +49,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}>
         {/* Logo */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <div className="bg-white rounded-xl px-3 py-2">
-            <img src="/logo.svg" alt="EasePay" className="h-7 w-auto" />
-          </div>
+          <img src="/logo-dark.png" alt="EasePay" className="h-8 w-auto" />
           <button onClick={onClose} className="lg:hidden text-white/60 hover:text-white ml-2">
             <X size={20} />
           </button>
