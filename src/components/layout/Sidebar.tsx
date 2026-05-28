@@ -79,7 +79,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}>
         {/* Logo */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
-          <img src="/logo-dark.png" alt="EasePay" className="h-8 w-auto" />
+          <img src="/logo-dark.png" alt="EasePay" className="h-20 w-auto" />
           <button onClick={onClose} className="lg:hidden text-white/50 hover:text-white p-1 rounded shrink-0">
             <X size={16} />
           </button>
