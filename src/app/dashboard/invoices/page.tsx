@@ -168,11 +168,11 @@ export default function InvoicesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-gray-50 border-b border-gray-200">
+            <table className="w-full text-sm min-w-[580px]">
+              <thead className="bg-gray-50/80 border-b border-gray-100">
                 <tr>
-                  {['Invoice #', 'Customer', 'Date', 'Due Date', 'Amount', 'Status', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                  {['Invoice #', 'Customer', 'Date', 'Amount', 'Status', ''].map(h => (
+                    <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -180,48 +180,43 @@ export default function InvoicesPage() {
                 {invoices.map((inv: any) => {
                   const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && !['PAID', 'CANCELLED'].includes(inv.status);
                   return (
-                    <tr key={inv.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs font-bold text-[#050A30] bg-[#050A30]/5 px-2 py-1 rounded">{inv.invoiceNumber}</span>
+                    <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-3 py-2.5">
+                        <span className="font-mono text-xs font-bold text-[#050A30] bg-[#050A30]/5 px-1.5 py-0.5 rounded">{inv.invoiceNumber}</span>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{inv.customerName}</p>
-                        {inv.customerEmail && <p className="text-xs text-gray-400 truncate max-w-[160px]">{inv.customerEmail}</p>}
+                      <td className="px-3 py-2.5">
+                        <p className="text-sm font-semibold text-gray-900 truncate max-w-[120px]">{inv.customerName}</p>
+                        {inv.customerEmail && <p className="text-xs text-gray-400 truncate max-w-[120px]">{inv.customerEmail}</p>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{formatDate(inv.invoiceDate || inv.createdAt)}</td>
-                      <td className="px-4 py-3 text-xs">
-                        {inv.dueDate ? (
-                          <span className={isOverdue ? 'text-red-500 font-medium' : 'text-gray-500'}>{formatDate(inv.dueDate)}</span>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3 font-bold text-gray-900">{formatCurrency(inv.grandTotal || inv.amount)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5 text-xs text-gray-400">{formatDate(inv.invoiceDate || inv.createdAt)}</td>
+                      <td className="px-3 py-2.5 text-sm font-bold text-gray-900">{formatCurrency(inv.grandTotal || inv.amount)}</td>
+                      <td className="px-3 py-2.5">
                         <Badge variant={statusBadge(inv.status)}>{inv.status}</Badge>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="relative flex items-center gap-1">
+                      <td className="px-3 py-2.5">
+                        <div className="relative flex items-center gap-0.5">
                           {inv.customerEmail && (
-                            <button onClick={() => sendMut.mutate(inv.id)} title="Send via email"
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" disabled={sendMut.isPending}>
-                              <Send size={13} />
+                            <button onClick={() => sendMut.mutate(inv.id)} title="Send"
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" disabled={sendMut.isPending}>
+                              <Send size={12} />
                             </button>
                           )}
                           <button onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
-                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                            <MoreVertical size={13} />
+                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+                            <MoreVertical size={12} />
                           </button>
                           {openMenuId === inv.id && (
-                            <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[180px] overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="absolute right-0 top-7 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[160px] overflow-hidden" onClick={e => e.stopPropagation()}>
                               {['PAID', 'PENDING', 'OVERDUE', 'CANCELLED'].map(s => (
                                 <button key={s} onClick={() => statusMut.mutate({ id: inv.id, status: s })}
-                                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between transition-colors ${inv.status === s ? 'font-semibold text-[#050A30]' : 'text-gray-700'}`}>
-                                  Mark as {s} {inv.status === s && '✓'}
+                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center justify-between transition-colors ${inv.status === s ? 'font-semibold text-[#050A30]' : 'text-gray-700'}`}>
+                                  Mark {s} {inv.status === s && '✓'}
                                 </button>
                               ))}
                               <div className="border-t border-gray-100" />
                               <button onClick={() => { if (confirm('Delete invoice?')) deleteMut.mutate(inv.id); }}
-                                className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
-                                <Trash2 size={13} /> Delete
+                                className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
+                                <Trash2 size={11} /> Delete
                               </button>
                             </div>
                           )}

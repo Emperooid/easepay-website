@@ -228,7 +228,7 @@ export default function NewInvoicePage() {
 
             {/* Notes & Terms */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes to Customer</label>
                   <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} placeholder="Thank you for your business..."

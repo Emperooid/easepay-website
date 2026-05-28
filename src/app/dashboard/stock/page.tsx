@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getInventory, createProduct, updateProduct, deleteProduct } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, Search, Loader2, Package, Pencil, Trash2, Eye, X, ChevronDown, SlidersHorizontal, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Loader2, Package, Pencil, Trash2, X, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const CATEGORIES = [
@@ -147,30 +147,26 @@ export default function StockPage() {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-md">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-0">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={e => { setSearch(e.target.value); setCurrentPage(1); }}
-            placeholder="Search"
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            placeholder="Search products..."
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors bg-white">
-            <CalendarDays size={15} />
-            Select Dates
-          </button>
-          <button className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors bg-white">
-            <SlidersHorizontal size={15} />
-            Filters
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button className="hidden sm:flex items-center gap-1.5 px-2.5 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 transition-colors bg-white">
+            <SlidersHorizontal size={13} />
+            Filter
           </button>
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 transition-colors"
           >
-            <Plus size={15} />
+            <Plus size={13} />
             Add Stock
           </button>
         </div>
@@ -193,10 +189,10 @@ export default function StockPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-180">
-                <thead className="border-b border-gray-100">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="border-b border-gray-100 bg-gray-50/50">
                   <tr>
-                    <th className="px-4 py-3 w-10">
+                    <th className="px-3 py-2.5 w-9">
                       <input
                         type="checkbox"
                         checked={selectedIds.size === paginated.length && paginated.length > 0}
@@ -204,23 +200,19 @@ export default function StockPage() {
                         className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                       />
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                      <div className="flex items-center gap-1">
-                        Product <ChevronDown size={14} className="text-gray-400" />
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Product Code</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Category</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Stock</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Price</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Product</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Code</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Qty</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Price</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-2.5 w-24"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {paginated.map((p: any) => (
                     <tr key={p.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-2.5">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(p.id)}
@@ -228,27 +220,24 @@ export default function StockPage() {
                           className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="px-4 py-3.5 font-medium text-gray-900">{p.name}</td>
-                      <td className="px-4 py-3.5 text-gray-500">{p.barcode || '—'}</td>
-                      <td className="px-4 py-3.5 text-gray-500">{p.category}</td>
-                      <td className="px-4 py-3.5 text-gray-700">{p.quantity}</td>
-                      <td className="px-4 py-3.5 text-gray-700">{formatCurrency(p.unitPrice)}</td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-3 py-2.5 font-medium text-gray-900 max-w-[140px] truncate">{p.name}</td>
+                      <td className="px-3 py-2.5 text-gray-400 text-xs hidden md:table-cell">{p.barcode || '—'}</td>
+                      <td className="px-3 py-2.5 text-gray-500 text-xs">{p.category}</td>
+                      <td className="px-3 py-2.5 text-gray-700 font-medium">{p.quantity}</td>
+                      <td className="px-3 py-2.5 text-gray-700 font-medium">{formatCurrency(p.unitPrice)}</td>
+                      <td className="px-3 py-2.5">
                         <StatusBadge status={getProductStatus(p)} />
                       </td>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1">
-                          <button className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
-                            <Eye size={15} />
-                          </button>
-                          <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                            <Pencil size={15} />
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={() => openEdit(p)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors">
+                            <Pencil size={13} />
                           </button>
                           <button
                             onClick={() => { if (confirm(`Delete "${p.name}"?`)) deleteMut.mutate(p.id); }}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -259,9 +248,9 @@ export default function StockPage() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-              <p className="text-sm text-gray-500">
-                Showing {products.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, products.length)} from {products.length}
+            <div className="flex items-center justify-between px-3 py-2.5 border-t border-gray-100">
+              <p className="text-xs text-gray-400">
+                {products.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, products.length)} of {products.length}
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -304,131 +293,128 @@ export default function StockPage() {
       {/* Add / Edit Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={closeModal}>
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
-                {modal === 'edit' ? 'Edit Stock' : 'Add Stock'}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">
+                {modal === 'edit' ? 'Edit Product' : 'Add Stock'}
               </h3>
-              <button onClick={closeModal} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 transition-colors">
-                <X size={18} />
+              <button onClick={closeModal} className="p-1 hover:bg-gray-100 rounded text-gray-400 transition-colors">
+                <X size={16} />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-4">
-              {/* Product Name */}
+            <div className="p-4 space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Product Name</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Product Name *</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Product Name"
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Dangote Sugar 1kg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              {/* Category */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
-                <div className="relative">
-                  <select
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
-                  >
-                    <option value="">Please Select</option>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Price + Quantity */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Price</label>
-                  <input
-                    type="text"
-                    value={form.unitPrice}
-                    onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))}
-                    placeholder="N0000"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
+                  <div className="relative">
+                    <select
+                      value={form.category}
+                      onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
+                    >
+                      <option value="">Select...</option>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Quantity</label>
-                  <input
-                    type="text"
-                    value={form.quantity}
-                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
-                    placeholder="00"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Kg (Optional) + Description (Optional) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Kg(Optional)</label>
-                  <input
-                    type="text"
-                    value={form.kg}
-                    onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
-                    placeholder="50G"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Description (Optional)</label>
-                  <input
-                    type="text"
-                    value={form.description}
-                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="Color/Size"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* Product Code (Optional) + Status */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Product Code (Optional)</label>
-                  <input
-                    type="text"
-                    value={form.barcode}
-                    onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
-                    placeholder="SG-002"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Status</label>
                   <div className="relative">
                     <select
                       value={form.status}
                       onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
                     >
-                      <option value="">Please Select</option>
+                      <option value="">Select...</option>
                       {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Price (₦)</label>
+                  <input
+                    type="number"
+                    value={form.unitPrice}
+                    onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))}
+                    placeholder="0.00"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    value={form.quantity}
+                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))}
+                    placeholder="0"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Unit (optional)</label>
+                  <input
+                    type="text"
+                    value={form.kg}
+                    onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
+                    placeholder="kg, pcs, bag..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Product Code</label>
+                  <input
+                    type="text"
+                    value={form.barcode}
+                    onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
+                    placeholder="SG-001"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Description (optional)</label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Color, size, variant..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center gap-3 px-6 pb-6">
+            <div className="flex items-center gap-2 px-4 pb-4">
               <button
                 type="button"
                 onClick={() => handleAdd(true)}
                 disabled={isPending}
-                className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
               >
                 Save as Draft
               </button>
@@ -436,9 +422,9 @@ export default function StockPage() {
                 type="button"
                 onClick={() => handleAdd(false)}
                 disabled={isPending}
-                className="flex-1 py-2.5 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
               >
-                {isPending ? <><Loader2 size={14} className="animate-spin" /> Saving...</> : (modal === 'edit' ? 'Save Changes' : 'Add Stock')}
+                {isPending ? <><Loader2 size={13} className="animate-spin" /> Saving...</> : (modal === 'edit' ? 'Save Changes' : 'Add Stock')}
               </button>
             </div>
           </div>

@@ -34,16 +34,18 @@ export default function BusinessProfilePage() {
   });
 
   useEffect(() => {
-    const b = (data?.data as any) || data;
-    if (b && typeof b === 'object') {
+    const raw = data?.data || data;
+    // backend may nest under profile, business, or businessProfile
+    const b = (raw as any)?.profile || (raw as any)?.business || (raw as any)?.businessProfile || raw;
+    if (b && typeof b === 'object' && !Array.isArray(b)) {
       setForm({
         businessName: b.businessName || b.name || '',
         address: b.address || b.businessAddress || '',
-        taxId: b.taxId || '',
-        bn: b.bn || '',
-        rc: b.rc || '',
+        taxId: b.taxId || b.tax_id || '',
+        bn: b.bn || b.businessNumber || '',
+        rc: b.rc || b.rcNumber || '',
         phoneNumber: b.phoneNumber || b.phone || '',
-        logo: b.logo || b.logoUrl || '',
+        logo: b.logo || b.logoUrl || b.logoURL || '',
       });
     }
   }, [data]);
