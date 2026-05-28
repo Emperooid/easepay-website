@@ -12,12 +12,19 @@ const pageTitles: Record<string, string> = {
   '/dashboard/expenses': 'Expenses',
   '/dashboard/stock': 'Inventory',
   '/dashboard/invoices': 'Invoices',
+  '/dashboard/invoices/new': 'New Invoice',
   '/dashboard/reports': 'Reports',
   '/dashboard/tax': 'Tax Summary',
   '/dashboard/settings': 'Settings',
   '/dashboard/settings/business': 'Business Profile',
   '/dashboard/settings/staff': 'Staff Management',
   '/dashboard/settings/subscription': 'Subscription',
+  '/dashboard/settings/payment-methods': 'Payment Methods',
+  '/dashboard/settings/input-balance': 'Set Balance',
+  '/dashboard/settings/invoice-template': 'Invoice Template',
+  '/dashboard/settings/import-data': 'Import Data',
+  '/dashboard/settings/change-pin': 'Change PIN',
+  '/dashboard/settings/roles': 'Roles & Permissions',
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +52,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!isAuthenticated) return null;
 
-  const title = pageTitles[pathname] || 'EasePay';
+  const title = pageTitles[pathname] ||
+    (pathname.startsWith('/dashboard/transactions/') ? 'Transaction Details' : 'EasePay');
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

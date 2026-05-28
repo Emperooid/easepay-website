@@ -4,13 +4,14 @@ export interface User {
   firstName?: string;
   lastName?: string;
   email?: string;
-  role: 'OWNER' | 'STAFF' | 'ADMIN';
+  role: 'OWNER' | 'STAFF' | 'ADMIN' | 'CASHIER' | 'MANAGER' | 'ACCOUNTANT';
   phoneVerified: boolean;
   businessOnboarded?: boolean;
   businessName?: string;
   permissions?: string[];
   staffRole?: string;
   businessId?: string;
+  subscription?: { planName?: string; status?: string; interval?: string };
 }
 
 export interface ApiResponse<T = any> {

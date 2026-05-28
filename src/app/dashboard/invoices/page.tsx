@@ -1,202 +1,243 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getInvoices, createInvoice, updateInvoiceStatus, deleteInvoice, getNextInvoiceNumber } from '@/services/apiService';
+import { getInvoices, createInvoice, updateInvoiceStatus, deleteInvoice, sendInvoice, getNextInvoiceNumber } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Plus, X, Search, Loader2, FileText, Trash2, ChevronDown } from 'lucide-react';
+import { Badge, statusBadge } from '@/components/ui/Badge';
+import {
+  Plus, Search, Loader2, FileText, Trash2, X, Send,
+  Download, MoreVertical, CheckCircle, Clock, AlertCircle,
+  ChevronDown, Eye
+} from 'lucide-react';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
 
-const STATUS_COLORS: Record<string, string> = {
-  PAID: 'bg-green-50 text-green-700',
-  PENDING: 'bg-yellow-50 text-yellow-700',
-  OVERDUE: 'bg-red-50 text-red-700',
-  DRAFT: 'bg-gray-100 text-gray-600',
-  UNPAID: 'bg-orange-50 text-orange-700',
-  CANCELLED: 'bg-gray-100 text-gray-500',
-};
+const STATUSES = ['ALL', 'PAID', 'PENDING', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'];
 
 export default function InvoicesPage() {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [form, setForm] = useState({ customerName: '', customerEmail: '', customerPhone: '', invoiceDate: new Date().toISOString().split('T')[0], dueDate: '', paymentMethod: 'CASH', notes: '', vatRate: '0', discount: '0' });
-  const [items, setItems] = useState([{ name: '', quantity: 1, unitPrice: 0, total: 0 }]);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    customerName: '', customerEmail: '', customerPhone: '', customerAddress: '',
+    invoiceDate: new Date().toISOString().split('T')[0], dueDate: '',
+    paymentMethod: 'TRANSFER', notes: '', terms: '',
+    vatRate: '0', discountType: 'amount', discountValue: '0',
+  });
+  const [items, setItems] = useState([{ name: '', description: '', quantity: 1, unitPrice: 0, total: 0 }]);
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({ queryKey: ['invoices', statusFilter], queryFn: () => getInvoices({ status: statusFilter || undefined, limit: 50 }) });
+  const status = statusFilter === 'ALL' ? undefined : statusFilter;
+  const { data, isLoading } = useQuery({ queryKey: ['invoices', status], queryFn: () => getInvoices({ status, limit: 100 }) });
   const { data: nextNumData } = useQuery({ queryKey: ['next-invoice'], queryFn: getNextInvoiceNumber, enabled: showModal });
-  const createMut = useMutation({ mutationFn: createInvoice, onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowModal(false); resetForm(); } });
-  const deleteMut = useMutation({ mutationFn: deleteInvoice, onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices'] }) });
 
-  const invoices = (data?.data as any)?.invoices || data?.data || [];
-  const filtered = invoices.filter((i: any) => i.customerName?.toLowerCase().includes(search.toLowerCase()) || i.invoiceNumber?.toLowerCase().includes(search.toLowerCase()));
+  const createMut = useMutation({
+    mutationFn: createInvoice,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowModal(false); resetForm(); toast.success('Invoice created!'); },
+    onError: (e: any) => toast.error(e.message || 'Failed to create invoice'),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }: any) => updateInvoiceStatus(id, status),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Status updated'); setOpenMenuId(null); },
+    onError: () => toast.error('Failed to update status'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deleteInvoice,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Invoice deleted'); setOpenMenuId(null); },
+    onError: () => toast.error('Failed to delete'),
+  });
+
+  const sendMut = useMutation({
+    mutationFn: sendInvoice,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Invoice sent!'); setOpenMenuId(null); },
+    onError: (e: any) => toast.error(e.message || 'Failed to send invoice'),
+  });
+
+  const invoices = useMemo(() => {
+    const raw = (data?.data as any)?.invoices || data?.data || [];
+    if (!search) return raw;
+    return raw.filter((i: any) =>
+      i.customerName?.toLowerCase().includes(search.toLowerCase()) ||
+      i.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) ||
+      i.customerEmail?.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [data, search]);
 
   const resetForm = () => {
-    setForm({ customerName: '', customerEmail: '', customerPhone: '', invoiceDate: new Date().toISOString().split('T')[0], dueDate: '', paymentMethod: 'CASH', notes: '', vatRate: '0', discount: '0' });
-    setItems([{ name: '', quantity: 1, unitPrice: 0, total: 0 }]);
+    setForm({ customerName: '', customerEmail: '', customerPhone: '', customerAddress: '', invoiceDate: new Date().toISOString().split('T')[0], dueDate: '', paymentMethod: 'TRANSFER', notes: '', terms: '', vatRate: '0', discountType: 'amount', discountValue: '0' });
+    setItems([{ name: '', description: '', quantity: 1, unitPrice: 0, total: 0 }]);
   };
 
   const updateItem = (idx: number, field: string, value: any) => {
     setItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      const updated = { ...item, [field]: value };
-      updated.total = updated.quantity * updated.unitPrice;
+      const updated = { ...item, [field]: field === 'name' || field === 'description' ? value : Number(value) || 0 };
+      if (field === 'quantity' || field === 'unitPrice') updated.total = (field === 'quantity' ? Number(value) : item.quantity) * (field === 'unitPrice' ? Number(value) : item.unitPrice);
       return updated;
     }));
   };
 
-  const subtotal = items.reduce((sum, i) => sum + i.total, 0);
-  const vatAmount = subtotal * (parseFloat(form.vatRate) / 100);
-  const grandTotal = subtotal + vatAmount - parseFloat(form.discount || '0');
+  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const discountAmt = form.discountType === 'percent' ? subtotal * parseFloat(form.discountValue || '0') / 100 : parseFloat(form.discountValue || '0');
+  const afterDiscount = subtotal - discountAmt;
+  const vatAmount = afterDiscount * (parseFloat(form.vatRate || '0') / 100);
+  const grandTotal = afterDiscount + vatAmount;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const validItems = items.filter(i => i.name);
+    if (validItems.length === 0) { toast.error('Add at least one item'); return; }
     const invoiceNumber = (nextNumData?.data as any)?.invoiceNumber || `INV-${Date.now()}`;
-    createMut.mutate({ ...form, invoiceNumber, items, subtotal, vatRate: parseFloat(form.vatRate), vatAmount, discount: parseFloat(form.discount), grandTotal });
+    createMut.mutate({
+      ...form, invoiceNumber,
+      items: validItems.map(i => ({ name: i.name, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, total: i.quantity * i.unitPrice })),
+      subtotal, vatRate: parseFloat(form.vatRate),
+      vatAmount, discount: discountAmt, grandTotal,
+    });
+  };
+
+  // Status summary counts
+  const allInvoices = (data?.data as any)?.invoices || data?.data || [];
+  const counts = {
+    total: allInvoices.length,
+    paid: allInvoices.filter((i: any) => i.status === 'PAID').length,
+    pending: allInvoices.filter((i: any) => ['PENDING', 'UNPAID'].includes(i.status)).length,
+    overdue: allInvoices.filter((i: any) => i.status === 'OVERDUE').length,
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..." className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" />
+    <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+          <div className="relative max-w-xs flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
+          </div>
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none">
-          <option value="">All Status</option>
-          {['PAID', 'PENDING', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'].map(s => <option key={s}>{s}</option>)}
-        </select>
-        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-medium hover:bg-[#0a1460] transition-colors">
-          <Plus size={16} /> New Invoice
-        </button>
+        <Link href="/dashboard/invoices/new" className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-all hover:shadow-md">
+          <Plus size={15} /> New Invoice
+        </Link>
       </div>
 
+      {/* Status Tabs */}
+      <div className="flex gap-1 flex-wrap">
+        {STATUSES.map(s => (
+          <button key={s} onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? 'bg-[#050A30] text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+            {s === 'ALL' ? `All (${counts.total})` : s}
+          </button>
+        ))}
+      </div>
+
+      {/* Summary Cards */}
+      {!isLoading && allInvoices.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Total Value', value: formatCurrency(allInvoices.reduce((s: number, i: any) => s + Number(i.grandTotal || i.amount || 0), 0)), icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: 'Paid', value: formatCurrency(allInvoices.filter((i: any) => i.status === 'PAID').reduce((s: number, i: any) => s + Number(i.grandTotal || i.amount || 0), 0)), icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
+            { label: 'Pending', value: counts.pending, icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+            { label: 'Overdue', value: counts.overdue, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+          ].map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${bg}`}><Icon size={16} className={color} /></div>
+              <div>
+                <p className="text-xs text-gray-400 font-medium">{label}</p>
+                <p className={`font-bold ${color}`}>{value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {isLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-400" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-400"><FileText size={40} className="mx-auto mb-3 opacity-50" /><p className="text-sm">No invoices yet</p></div>
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
+        ) : invoices.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <FileText size={44} className="mx-auto mb-3 opacity-30" />
+            <p className="font-medium text-gray-500">No invoices found</p>
+            <Link href="/dashboard/invoices/new" className="inline-block mt-4 px-5 py-2.5 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
+              Create Invoice
+            </Link>
+          </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['Invoice #', 'Customer', 'Date', 'Due', 'Amount', 'Status', ''].map(h => <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filtered.map((inv: any) => (
-                <tr key={inv.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs font-medium text-gray-900">{inv.invoiceNumber}</td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{inv.customerName}</p>
-                    {inv.customerEmail && <p className="text-xs text-gray-400">{inv.customerEmail}</p>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(inv.invoiceDate || inv.createdAt)}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{inv.dueDate ? formatDate(inv.dueDate) : '—'}</td>
-                  <td className="px-4 py-3 font-semibold">{formatCurrency(inv.grandTotal || inv.amount)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[inv.status] || 'bg-gray-100 text-gray-600'}`}>{inv.status}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => deleteMut.mutate(inv.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {['Invoice #', 'Customer', 'Date', 'Due Date', 'Amount', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {invoices.map((inv: any) => {
+                  const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && !['PAID', 'CANCELLED'].includes(inv.status);
+                  return (
+                    <tr key={inv.id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs font-bold text-[#050A30] bg-[#050A30]/5 px-2 py-1 rounded">{inv.invoiceNumber}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900">{inv.customerName}</p>
+                        {inv.customerEmail && <p className="text-xs text-gray-400 truncate max-w-[160px]">{inv.customerEmail}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{formatDate(inv.invoiceDate || inv.createdAt)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {inv.dueDate ? (
+                          <span className={isOverdue ? 'text-red-500 font-medium' : 'text-gray-500'}>{formatDate(inv.dueDate)}</span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-gray-900">{formatCurrency(inv.grandTotal || inv.amount)}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={statusBadge(inv.status)}>{inv.status}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="relative flex items-center gap-1">
+                          {inv.customerEmail && (
+                            <button onClick={() => sendMut.mutate(inv.id)} title="Send via email"
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" disabled={sendMut.isPending}>
+                              <Send size={13} />
+                            </button>
+                          )}
+                          <button onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
+                            className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                            <MoreVertical size={13} />
+                          </button>
+                          {openMenuId === inv.id && (
+                            <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[180px] overflow-hidden" onClick={e => e.stopPropagation()}>
+                              {['PAID', 'PENDING', 'OVERDUE', 'CANCELLED'].map(s => (
+                                <button key={s} onClick={() => statusMut.mutate({ id: inv.id, status: s })}
+                                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between transition-colors ${inv.status === s ? 'font-semibold text-[#050A30]' : 'text-gray-700'}`}>
+                                  Mark as {s} {inv.status === s && '✓'}
+                                </button>
+                              ))}
+                              <div className="border-t border-gray-100" />
+                              <button onClick={() => { if (confirm('Delete invoice?')) deleteMut.mutate(inv.id); }}
+                                className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
-              <h3 className="text-lg font-semibold">New Invoice</h3>
-              <button onClick={() => { setShowModal(false); resetForm(); }} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-5">
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-3">Customer Details</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-3 sm:col-span-1">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Customer Name *</label>
-                    <input type="text" value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" required />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                    <input type="email" value={form.customerEmail} onChange={e => setForm(f => ({ ...f, customerEmail: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
-                    <input type="tel" value={form.customerPhone} onChange={e => setForm(f => ({ ...f, customerPhone: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Invoice Date</label>
-                  <input type="date" value={form.invoiceDate} onChange={e => setForm(f => ({ ...f, invoiceDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Due Date</label>
-                  <input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
-                  <select value={form.paymentMethod} onChange={e => setForm(f => ({ ...f, paymentMethod: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none">
-                    <option value="CASH">Cash</option><option value="CARD">Card</option><option value="TRANSFER">Transfer</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-gray-700">Items</p>
-                  <button type="button" onClick={() => setItems(p => [...p, { name: '', quantity: 1, unitPrice: 0, total: 0 }])} className="text-xs text-[#050A30] font-medium hover:underline">+ Add Item</button>
-                </div>
-                <div className="space-y-2">
-                  {items.map((item, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                      <input type="text" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)} placeholder="Item name" className="col-span-5 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#050A30]" required />
-                      <input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)} min="1" className="col-span-2 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none text-center" />
-                      <input type="number" value={item.unitPrice} onChange={e => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)} min="0" step="0.01" placeholder="Price" className="col-span-3 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none" />
-                      <p className="col-span-1 text-xs font-medium text-gray-700 text-right">{formatCurrency(item.total)}</p>
-                      <button type="button" onClick={() => setItems(p => p.filter((_, i) => i !== idx))} disabled={items.length === 1} className="col-span-1 text-gray-400 hover:text-red-500 disabled:opacity-0 flex justify-center"><X size={14} /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">VAT Rate (%)</label>
-                  <input type="number" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} min="0" max="100" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Discount (₦)</label>
-                  <input type="number" value={form.discount} onChange={e => setForm(f => ({ ...f, discount: e.target.value }))} min="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none" />
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-xl p-3 text-sm space-y-1">
-                <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                {parseFloat(form.vatRate) > 0 && <div className="flex justify-between text-gray-600"><span>VAT ({form.vatRate}%)</span><span>{formatCurrency(vatAmount)}</span></div>}
-                {parseFloat(form.discount) > 0 && <div className="flex justify-between text-red-600"><span>Discount</span><span>-{formatCurrency(parseFloat(form.discount))}</span></div>}
-                <div className="flex justify-between font-bold text-gray-900 border-t pt-1 mt-1"><span>Total</span><span>{formatCurrency(grandTotal)}</span></div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
-                <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none resize-none" />
-              </div>
-
-              <button type="submit" disabled={createMut.isPending} className="w-full py-2.5 bg-[#050A30] text-white rounded-lg text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
-                {createMut.isPending && <Loader2 size={14} className="animate-spin" />}
-                Create Invoice
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Click outside to close menu */}
+      {openMenuId && <div className="fixed inset-0 z-0" onClick={() => setOpenMenuId(null)} />}
     </div>
   );
 }

@@ -1,13 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSalesReport, getExpensesReport, getProfitLossReport } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend } from 'recharts';
-import { Loader2 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, Legend, AreaChart, Area
+} from 'recharts';
+import { Loader2, TrendingUp, TrendingDown, DollarSign, ShoppingCart, Receipt, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-type Tab = 'sales' | 'expenses' | 'profit';
+type Tab = 'profit' | 'sales' | 'expenses';
 type Period = 'day' | 'week' | 'month';
 
 export default function ReportsPage() {
@@ -18,87 +22,204 @@ export default function ReportsPage() {
 
   const params = { groupBy, startDate: startDate || undefined, endDate: endDate || undefined };
 
-  const { data: salesData, isLoading: salesLoading } = useQuery({ queryKey: ['report-sales', params], queryFn: () => getSalesReport(params), enabled: tab === 'sales' });
-  const { data: expData, isLoading: expLoading } = useQuery({ queryKey: ['report-exp', params], queryFn: () => getExpensesReport(params), enabled: tab === 'expenses' });
-  const { data: plData, isLoading: plLoading } = useQuery({ queryKey: ['report-pl', params], queryFn: () => getProfitLossReport(params), enabled: tab === 'profit' });
+  const { data: salesData, isLoading: salesLoading } = useQuery({
+    queryKey: ['report-sales', params],
+    queryFn: () => getSalesReport(params),
+    enabled: tab === 'sales' || tab === 'profit',
+  });
+  const { data: expData, isLoading: expLoading } = useQuery({
+    queryKey: ['report-exp', params],
+    queryFn: () => getExpensesReport(params),
+    enabled: tab === 'expenses' || tab === 'profit',
+  });
+  const { data: plData, isLoading: plLoading } = useQuery({
+    queryKey: ['report-pl', params],
+    queryFn: () => getProfitLossReport(params),
+    enabled: tab === 'profit',
+  });
 
-  const isLoading = salesLoading || expLoading || plLoading;
+  const isLoading = (tab === 'sales' && salesLoading) || (tab === 'expenses' && expLoading) || (tab === 'profit' && plLoading);
+
   const rawData = tab === 'sales' ? salesData?.data : tab === 'expenses' ? expData?.data : plData?.data;
   const chartData = (rawData as any)?.data || (rawData as any)?.chartData || rawData || [];
   const summary = (rawData as any)?.summary || {};
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'profit', label: 'Profit & Loss' },
-    { key: 'sales', label: 'Sales' },
-    { key: 'expenses', label: 'Expenses' },
+  const salesSummary = (salesData?.data as any)?.summary || {};
+  const expSummary = (expData?.data as any)?.summary || {};
+
+  const totalRevenue = salesSummary.totalRevenue || salesSummary.revenue || 0;
+  const totalExpenses = expSummary.totalExpenses || expSummary.total || 0;
+  const netProfit = totalRevenue - totalExpenses;
+  const totalSalesCount = salesSummary.totalSales || salesSummary.count || 0;
+
+  const exportCSV = () => {
+    if (!chartData.length) { toast.error('No data to export'); return; }
+    const keys = Object.keys(chartData[0]);
+    const rows = [keys.join(','), ...chartData.map((row: any) => keys.map(k => row[k]).join(','))].join('\n');
+    const blob = new Blob([rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `easepay-${tab}-report.csv`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Report exported!');
+  };
+
+  const TABS = [
+    { key: 'profit' as Tab, label: 'Profit & Loss' },
+    { key: 'sales' as Tab, label: 'Sales' },
+    { key: 'expenses' as Tab, label: 'Expenses' },
+  ];
+
+  const metricCards = tab === 'profit' ? [
+    { label: 'Total Revenue', value: formatCurrency(totalRevenue), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'Total Expenses', value: formatCurrency(totalExpenses), icon: Receipt, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'Net Profit', value: formatCurrency(netProfit), icon: DollarSign, color: netProfit >= 0 ? 'text-blue-600' : 'text-red-600', bg: netProfit >= 0 ? 'bg-blue-50' : 'bg-red-50' },
+    { label: 'Total Sales', value: totalSalesCount, icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50' },
+  ] : tab === 'sales' ? [
+    { label: 'Total Revenue', value: formatCurrency(summary.totalRevenue || summary.revenue || 0), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
+    { label: 'No. of Sales', value: summary.totalSales || summary.count || 0, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Avg. Sale', value: formatCurrency(summary.avgSale || (summary.totalSales ? (summary.totalRevenue / summary.totalSales) : 0)), icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Growth', value: `${(summary.growth || 0).toFixed(1)}%`, icon: summary.growth >= 0 ? TrendingUp : TrendingDown, color: summary.growth >= 0 ? 'text-green-600' : 'text-red-500', bg: summary.growth >= 0 ? 'bg-green-50' : 'bg-red-50' },
+  ] : [
+    { label: 'Total Expenses', value: formatCurrency(summary.totalExpenses || summary.total || 0), icon: Receipt, color: 'text-red-600', bg: 'bg-red-50' },
+    { label: 'No. of Records', value: summary.count || 0, icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Avg. Expense', value: formatCurrency(summary.avgExpense || 0), icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Largest', value: formatCurrency(summary.largest || summary.max || 0), icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
   ];
 
   return (
-    <div className="space-y-5">
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {tabs.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 ml-auto">
-          {(['day', 'week', 'month'] as Period[]).map(p => (
-            <button key={p} onClick={() => setGroupBy(p)} className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-colors ${groupBy === p ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>{p}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none" />
-          <span className="text-gray-400 text-sm">to</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none" />
+    <div className="space-y-5 animate-in fade-in duration-200">
+      {/* Filters Bar */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Tab toggle */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {TABS.map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Period toggle */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {(['day', 'week', 'month'] as Period[]).map(p => (
+              <button key={p} onClick={() => setGroupBy(p)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${groupBy === p ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                {p === 'day' ? 'Daily' : p === 'week' ? 'Weekly' : 'Monthly'}
+              </button>
+            ))}
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#050A30]" />
+            <span className="text-gray-300 text-sm">→</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#050A30]" />
+            {(startDate || endDate) && (
+              <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-xs text-gray-400 hover:text-gray-600 font-medium">Clear</button>
+            )}
+          </div>
+
+          <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition-colors">
+            <Download size={13} /> Export CSV
+          </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {summary && Object.keys(summary).length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Object.entries(summary).map(([key, val]: any) => (
-            <div key={key} className="bg-white rounded-xl border border-gray-200 p-4">
-              <p className="text-xs text-gray-500 capitalize mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-              <p className="text-xl font-bold text-gray-900">{typeof val === 'number' ? (key.toLowerCase().includes('count') || key.toLowerCase().includes('total') && val < 1000 ? val : formatCurrency(val)) : val}</p>
+      {/* Metric Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {metricCards.map(({ label, value, icon: Icon, color, bg }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+              <Icon size={18} className={color} />
             </div>
-          ))}
-        </div>
-      )}
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400 font-medium">{label}</p>
+              <p className={`text-base font-bold ${color} truncate`}>{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-gray-900">
+            {tab === 'profit' ? 'Revenue vs Expenses' : tab === 'sales' ? 'Sales Revenue' : 'Expense Breakdown'}
+          </h3>
+          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full capitalize">{groupBy}</span>
+        </div>
+
         {isLoading ? (
-          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-400" /></div>
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
         ) : chartData.length === 0 ? (
-          <div className="text-center py-16 text-gray-400 text-sm">No data for selected period</div>
+          <div className="text-center py-16 text-gray-400">
+            <TrendingUp size={40} className="mx-auto mb-3 opacity-20" />
+            <p className="font-medium">No data for selected period</p>
+            <p className="text-sm mt-1">Try adjusting your date range or period</p>
+          </div>
         ) : tab === 'profit' ? (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: any) => formatCurrency(v)} />
-              <Legend />
-              <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} name="Revenue" dot={false} />
-              <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} name="Expenses" dot={false} />
-              <Line type="monotone" dataKey="profit" stroke="#050A30" strokeWidth={2} name="Profit" dot={false} />
-            </LineChart>
+            <AreaChart data={chartData} margin={{ left: -20 }}>
+              <defs>
+                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(v: any) => formatCurrency(v)} contentStyle={{ borderRadius: '10px', fontSize: '12px', border: '1px solid #e5e7eb' }} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
+              <Area type="monotone" dataKey="revenue" stroke="#22c55e" fill="url(#revGrad)" strokeWidth={2.5} name="Revenue" dot={false} />
+              <Area type="monotone" dataKey="expenses" stroke="#ef4444" fill="url(#expGrad)" strokeWidth={2.5} name="Expenses" dot={false} />
+              <Line type="monotone" dataKey="profit" stroke="#050A30" strokeWidth={2} name="Profit" dot={false} strokeDasharray="4 2" />
+            </AreaChart>
           </ResponsiveContainer>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v: any) => formatCurrency(v)} />
-              <Bar dataKey={tab === 'sales' ? 'revenue' : 'amount'} fill={tab === 'sales' ? '#050A30' : '#ef4444'} radius={[4, 4, 0, 0]} />
+            <BarChart data={chartData} margin={{ left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `₦${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(v: any) => formatCurrency(v)} contentStyle={{ borderRadius: '10px', fontSize: '12px', border: '1px solid #e5e7eb' }} />
+              <Bar dataKey={tab === 'sales' ? 'revenue' : 'amount'} fill={tab === 'sales' ? '#050A30' : '#ef4444'} radius={[4, 4, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Category breakdown for expenses */}
+      {tab === 'expenses' && (rawData as any)?.byCategory && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-bold text-gray-900 mb-4">By Category</h3>
+          <div className="space-y-2">
+            {((rawData as any).byCategory as any[]).map((cat: any) => {
+              const total = (rawData as any)?.summary?.totalExpenses || 1;
+              const pct = ((cat.amount / total) * 100).toFixed(1);
+              return (
+                <div key={cat.category} className="flex items-center gap-3">
+                  <div className="w-24 text-xs font-medium text-gray-700 truncate">{cat.category}</div>
+                  <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div className="h-2 rounded-full bg-[#050A30] transition-all" style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
+                  </div>
+                  <div className="w-20 text-right text-xs font-semibold text-gray-700">{formatCurrency(cat.amount)}</div>
+                  <div className="w-12 text-right text-xs text-gray-400">{pct}%</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

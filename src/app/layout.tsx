@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { QueryProvider } from '@/components/QueryProvider';
+import { ToastProvider } from '@/components/ui/Toast';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} h-full bg-gray-50`} suppressHydrationWarning>
         <QueryProvider>
           <AuthProvider>
+            <ToastProvider />
             {children}
           </AuthProvider>
         </QueryProvider>
