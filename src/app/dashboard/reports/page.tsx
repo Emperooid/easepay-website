@@ -40,12 +40,12 @@ export default function ReportsPage() {
 
   const isLoading = (tab === 'sales' && salesLoading) || (tab === 'expenses' && expLoading) || (tab === 'profit' && plLoading);
 
-  const rawData = tab === 'sales' ? salesData?.data : tab === 'expenses' ? expData?.data : plData?.data;
-  const chartData = (rawData as any)?.data || (rawData as any)?.chartData || rawData || [];
+  const rawData = tab === 'sales' ? (salesData?.data || salesData) : tab === 'expenses' ? (expData?.data || expData) : (plData?.data || plData);
+  const chartData = (rawData as any)?.data || (rawData as any)?.chartData || (rawData as any)?.report || (Array.isArray(rawData) ? rawData : []);
   const summary = (rawData as any)?.summary || {};
 
-  const salesSummary = (salesData?.data as any)?.summary || {};
-  const expSummary = (expData?.data as any)?.summary || {};
+  const salesSummary = (salesData?.data as any)?.summary || (salesData as any)?.summary || {};
+  const expSummary = (expData?.data as any)?.summary || (expData as any)?.summary || {};
 
   const totalRevenue = salesSummary.totalRevenue || salesSummary.revenue || 0;
   const totalExpenses = expSummary.totalExpenses || expSummary.total || 0;
@@ -133,13 +133,13 @@ export default function ReportsPage() {
       {/* Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {metricCards.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
-              <Icon size={18} className={color} />
+          <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+              <Icon size={15} className={color} />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-gray-400 font-medium">{label}</p>
-              <p className={`text-base font-bold ${color} truncate`}>{value}</p>
+              <p className={`text-sm font-bold ${color} truncate`}>{value}</p>
             </div>
           </div>
         ))}
@@ -155,12 +155,12 @@ export default function ReportsPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
+          <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" size={24} /></div>
         ) : chartData.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <TrendingUp size={40} className="mx-auto mb-3 opacity-20" />
-            <p className="font-medium">No data for selected period</p>
-            <p className="text-sm mt-1">Try adjusting your date range or period</p>
+          <div className="text-center py-12 text-gray-400">
+            <TrendingUp size={32} className="mx-auto mb-2 opacity-20" />
+            <p className="font-medium text-sm">No data for selected period</p>
+            <p className="text-xs mt-1">Try adjusting your date range or period</p>
           </div>
         ) : tab === 'profit' ? (
           <ResponsiveContainer width="100%" height={300}>

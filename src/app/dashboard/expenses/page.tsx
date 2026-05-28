@@ -68,7 +68,7 @@ export default function ExpensesPage() {
   });
 
   const expenses = useMemo(() => {
-    const raw = (data?.data as any)?.expenses || data?.data || [];
+    const raw = (data?.data as any)?.expenses || (data as any)?.expenses || data?.data || [];
     return raw.filter((e: any) => {
       const matchSearch = !search || e.description?.toLowerCase().includes(search.toLowerCase()) || e.category?.toLowerCase().includes(search.toLowerCase()) || e.vendor?.toLowerCase().includes(search.toLowerCase());
       const matchCat = !filterCategory || e.category === filterCategory;
@@ -77,7 +77,7 @@ export default function ExpensesPage() {
   }, [data, search, filterCategory]);
 
   const totalExpenses = useMemo(() => {
-    const raw = (data?.data as any)?.expenses || data?.data || [];
+    const raw = (data?.data as any)?.expenses || (data as any)?.expenses || data?.data || [];
     return raw.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
   }, [data]);
 
@@ -101,24 +101,24 @@ export default function ExpensesPage() {
     const catInfo = CATEGORIES.find(c => c.name === (lastExpense?.category || form.category));
     const Icon = catInfo?.icon || Receipt;
     return (
-      <div className="max-w-md mx-auto py-10 flex flex-col items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center">
-          <CheckCircle2 size={44} className="text-red-500" />
+      <div className="max-w-sm mx-auto py-6 flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+          <CheckCircle2 size={28} className="text-red-500" />
         </div>
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Expense Added!</h2>
-          <p className="text-gray-500 mt-1">Recorded successfully</p>
+          <h2 className="text-lg font-bold text-gray-900">Expense Added!</h2>
+          <p className="text-gray-500 text-sm mt-0.5">Recorded successfully</p>
         </div>
-        <div className="w-full bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
-          <div className="flex justify-between text-sm"><span className="text-gray-500">Amount</span><span className="font-bold text-red-600 text-base">-{formatCurrency(lastExpense?.amount || parseFloat(form.amount))}</span></div>
+        <div className="w-full bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Amount</span><span className="font-bold text-red-600">-{formatCurrency(lastExpense?.amount || parseFloat(form.amount))}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Category</span><span className="font-medium">{lastExpense?.category || form.category}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Description</span><span className="font-medium max-w-[60%] text-right">{lastExpense?.description || form.description}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Payment</span><span className="font-medium">{lastExpense?.paymentMethod || form.paymentMethod}</span></div>
           {form.vendor && <div className="flex justify-between text-sm"><span className="text-gray-500">Vendor</span><span className="font-medium">{form.vendor}</span></div>}
         </div>
         <div className="flex gap-3 w-full">
-          <button onClick={() => { resetForm(); setStep('new'); }} className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">Add Another</button>
-          <button onClick={() => { resetForm(); setStep('list'); }} className="flex-1 py-3 bg-[#050A30] text-white rounded-xl text-sm font-semibold hover:bg-[#0a1460] transition-colors">View All</button>
+          <button onClick={() => { resetForm(); setStep('new'); }} className="flex-1 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">Add Another</button>
+          <button onClick={() => { resetForm(); setStep('list'); }} className="flex-1 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">View All</button>
         </div>
       </div>
     );
@@ -232,13 +232,13 @@ export default function ExpensesPage() {
       {!isLoading && expenses.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Total', value: (data?.data as any)?.expenses?.length || 0, color: 'text-gray-900' },
+            { label: 'Total', value: (data?.data as any)?.expenses?.length || expenses.length, color: 'text-gray-900' },
             { label: 'Spent', value: formatCurrency(totalExpenses), color: 'text-red-600' },
-            { label: 'Today', value: ((data?.data as any)?.expenses || []).filter((e: any) => new Date(e.date || e.createdAt).toDateString() === new Date().toDateString()).length, color: 'text-blue-600' },
+            { label: 'Today', value: ((data?.data as any)?.expenses || expenses).filter((e: any) => new Date(e.date || e.createdAt).toDateString() === new Date().toDateString()).length, color: 'text-blue-600' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            <div key={label} className="bg-white rounded-xl border border-gray-200 px-3 py-2.5">
               <p className="text-xs text-gray-400 font-medium">{label}</p>
-              <p className={`text-lg font-bold ${color}`}>{value}</p>
+              <p className={`text-sm font-bold ${color}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -248,11 +248,11 @@ export default function ExpensesPage() {
         {isLoading ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
         ) : expenses.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <Receipt size={44} className="mx-auto mb-3 opacity-30" />
-            <p className="font-medium text-gray-500">No expenses yet</p>
-            <p className="text-sm mt-1">Start tracking your business spending</p>
-            <button onClick={() => setStep('new')} className="mt-4 px-5 py-2.5 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
+          <div className="text-center py-10 text-gray-400">
+            <Receipt size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-gray-500 text-sm">No expenses yet</p>
+            <p className="text-xs mt-1">Start tracking your business spending</p>
+            <button onClick={() => setStep('new')} className="mt-3 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
               Add Expense
             </button>
           </div>

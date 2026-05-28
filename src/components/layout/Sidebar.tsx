@@ -5,19 +5,21 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import {
-  LayoutDashboard, ShoppingCart, Receipt, Package,
-  FileText, BarChart3, Calculator, Settings, LogOut, X,
+  Home, Package, BarChart3, Activity, ShoppingCart,
+  Receipt, FileText, Calculator, Building2, Settings, LogOut, X,
 } from 'lucide-react';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/sales', label: 'Sales', icon: ShoppingCart },
-  { href: '/dashboard/expenses', label: 'Expenses', icon: Receipt },
-  { href: '/dashboard/stock', label: 'Inventory', icon: Package },
-  { href: '/dashboard/invoices', label: 'Invoices', icon: FileText },
-  { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/dashboard/tax', label: 'Tax', icon: Calculator },
-  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard', label: 'Home', icon: Home, exact: true },
+  { href: '/dashboard/sales', label: 'Sales', icon: ShoppingCart, exact: false },
+  { href: '/dashboard/expenses', label: 'Expenses', icon: Receipt, exact: false },
+  { href: '/dashboard/invoices', label: 'Invoices', icon: FileText, exact: false },
+  { href: '/dashboard/stock', label: 'Stocks', icon: Package, exact: false },
+  { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, exact: true },
+  { href: '/dashboard/reports', label: 'Business Health', icon: Activity, exact: false, neverActive: true },
+  { href: '/dashboard/tax', label: 'Tax', icon: Calculator, exact: false },
+  { href: '/dashboard/settings/business', label: 'Business Details', icon: Building2, exact: true },
+  { href: '/dashboard/settings', label: 'Settings', icon: Settings, exact: true },
 ];
 
 interface SidebarProps {
@@ -27,25 +29,30 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { logout, user } = useAuth();
+  const { logout } = useAuth();
+
+  const isActive = (item: typeof navItems[0]) => {
+    if (item.neverActive) return false;
+    if (item.exact) return pathname === item.href;
+    return pathname === item.href || pathname.startsWith(item.href + '/');
+  };
 
   return (
     <>
-      {/* Mobile overlay */}
       {open && (
         <div className="fixed inset-0 z-20 bg-black/50 lg:hidden" onClick={onClose} />
       )}
 
-      {/* Sidebar */}
       <aside className={cn(
-        'fixed inset-y-0 left-0 z-30 w-64 bg-[#050A30] flex flex-col transition-transform duration-300 lg:translate-x-0 lg:static lg:z-auto',
+        'fixed inset-y-0 left-0 z-30 w-56 bg-[#050A30] flex flex-col transition-transform duration-300 lg:translate-x-0 lg:static lg:z-auto',
         open ? 'translate-x-0' : '-translate-x-full'
       )}>
         {/* Logo */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/10">
-          <div>
-            <h1 className="text-white text-xl font-bold tracking-tight">EasePay</h1>
-            <p className="text-white/50 text-xs mt-0.5">{user?.businessName || 'Business'}</p>
+        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-white text-xl font-bold tracking-tight">
+              EasePay<span className="text-blue-400">·:</span>
+            </span>
           </div>
           <button onClick={onClose} className="lg:hidden text-white/60 hover:text-white">
             <X size={20} />
@@ -53,12 +60,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + '/');
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {navItems.map(({ href, label, icon: Icon, ...item }) => {
+            const active = isActive({ href, label, icon: Icon, ...item });
             return (
               <Link
-                key={href}
+                key={label}
                 href={href}
                 onClick={onClose}
                 className={cn(
@@ -75,18 +82,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* User + Logout */}
+        {/* Logout */}
         <div className="px-3 py-4 border-t border-white/10">
-          <div className="px-3 py-2 mb-2">
-            <p className="text-white text-sm font-medium">{user?.firstName} {user?.lastName}</p>
-            <p className="text-white/50 text-xs">{user?.email || user?.phone}</p>
-          </div>
           <button
             onClick={logout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-white/10 transition-colors"
           >
             <LogOut size={18} />
-            Sign Out
+            Log out
           </button>
         </div>
       </aside>

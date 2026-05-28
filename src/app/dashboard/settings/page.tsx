@@ -98,14 +98,18 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl space-y-6 pb-8 animate-in fade-in duration-200">
       {/* Profile Card */}
-      <div className="bg-[#050A30] rounded-2xl p-5 flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-          {user?.firstName?.[0]?.toUpperCase() || 'U'}
-        </div>
+      <div className="bg-[#050A30] rounded-2xl p-4 flex items-center gap-3">
+        {(user?.avatar || user?.profileImage) ? (
+          <img src={user.avatar || user.profileImage} alt="Profile" className="w-12 h-12 rounded-xl object-cover flex-shrink-0 border-2 border-white/20" />
+        ) : (
+          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+            {user?.firstName?.[0]?.toUpperCase() || 'U'}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
-          <p className="text-white font-bold text-base">{user?.firstName} {user?.lastName}</p>
-          <p className="text-white/60 text-sm truncate">{user?.email || user?.phone}</p>
-          <div className="mt-1.5 flex items-center gap-2">
+          <p className="text-white font-bold text-sm">{user?.firstName} {user?.lastName}</p>
+          <p className="text-white/60 text-xs truncate">{user?.email || user?.phone}</p>
+          <div className="mt-1 flex items-center gap-2">
             <span className="inline-block text-xs font-semibold px-2 py-0.5 bg-white/20 text-white rounded-full">{user?.role}</span>
             {user?.businessName && <span className="text-xs text-white/50 truncate">{user.businessName}</span>}
           </div>

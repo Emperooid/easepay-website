@@ -38,8 +38,8 @@ export default function TaxPage() {
     queryFn: () => getMonthlyTax(undefined, selectedYear),
   });
 
-  const tax = (summaryData?.data as any) || {};
-  const monthly = (monthlyData?.data as any)?.months || (monthlyData?.data as any)?.data || [];
+  const tax = (summaryData?.data as any) || (summaryData as any) || {};
+  const monthly = (monthlyData?.data as any)?.months || (monthlyData?.data as any)?.data || (monthlyData as any)?.months || [];
 
   const vatCollected = tax.vatCollected || tax.vat || 0;
   const totalRevenue = tax.totalRevenue || tax.revenue || 0;
@@ -106,25 +106,25 @@ export default function TaxPage() {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
+        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" size={24} /></div>
       ) : totalRevenue === 0 && !tax.vatCollected ? (
-        <div className="text-center py-16 text-gray-400">
-          <Calculator size={44} className="mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-gray-500">No tax data for {selectedQuarter ? `Q${selectedQuarter} ` : ''}{selectedYear}</p>
-          <p className="text-sm mt-1">Record sales and expenses to see your tax summary</p>
+        <div className="text-center py-10 text-gray-400">
+          <Calculator size={32} className="mx-auto mb-2 opacity-30" />
+          <p className="font-medium text-gray-500 text-sm">No tax data for {selectedQuarter ? `Q${selectedQuarter} ` : ''}{selectedYear}</p>
+          <p className="text-xs mt-1">Record sales and expenses to see your tax summary</p>
         </div>
       ) : (
         <>
           {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {metricCards.map(({ label, value, icon: Icon, color, bg }) => (
-              <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
-                  <Icon size={18} className={color} />
+              <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                  <Icon size={15} className={color} />
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-gray-400 font-medium">{label}</p>
-                  <p className={`font-bold text-base truncate ${color}`}>{value}</p>
+                  <p className={`font-bold text-sm truncate ${color}`}>{value}</p>
                 </div>
               </div>
             ))}

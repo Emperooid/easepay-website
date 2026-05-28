@@ -17,7 +17,7 @@ export default function StaffPage() {
   });
   const removeMut = useMutation({ mutationFn: removeTeamMember, onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }) });
 
-  const staff = (data?.data as any)?.staff || data?.data || [];
+  const staff = (data?.data as any)?.staff || (data as any)?.staff || data?.data || [];
 
   return (
     <div className="max-w-2xl space-y-4">

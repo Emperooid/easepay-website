@@ -58,7 +58,7 @@ export default function InvoicesPage() {
   });
 
   const invoices = useMemo(() => {
-    const raw = (data?.data as any)?.invoices || data?.data || [];
+    const raw = (data?.data as any)?.invoices || (data as any)?.invoices || data?.data || [];
     if (!search) return raw;
     return raw.filter((i: any) =>
       i.customerName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -101,7 +101,7 @@ export default function InvoicesPage() {
   };
 
   // Status summary counts
-  const allInvoices = (data?.data as any)?.invoices || data?.data || [];
+  const allInvoices = (data?.data as any)?.invoices || (data as any)?.invoices || data?.data || [];
   const counts = {
     total: allInvoices.length,
     paid: allInvoices.filter((i: any) => i.status === 'PAID').length,
@@ -143,11 +143,11 @@ export default function InvoicesPage() {
             { label: 'Pending', value: counts.pending, icon: Clock, color: 'text-yellow-600', bg: 'bg-yellow-50' },
             { label: 'Overdue', value: counts.overdue, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
           ].map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${bg}`}><Icon size={16} className={color} /></div>
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bg}`}><Icon size={14} className={color} /></div>
               <div>
                 <p className="text-xs text-gray-400 font-medium">{label}</p>
-                <p className={`font-bold ${color}`}>{value}</p>
+                <p className={`text-sm font-bold ${color}`}>{value}</p>
               </div>
             </div>
           ))}
@@ -159,10 +159,10 @@ export default function InvoicesPage() {
         {isLoading ? (
           <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={28} /></div>
         ) : invoices.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <FileText size={44} className="mx-auto mb-3 opacity-30" />
-            <p className="font-medium text-gray-500">No invoices found</p>
-            <Link href="/dashboard/invoices/new" className="inline-block mt-4 px-5 py-2.5 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
+          <div className="text-center py-10 text-gray-400">
+            <FileText size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="font-medium text-gray-500 text-sm">No invoices found</p>
+            <Link href="/dashboard/invoices/new" className="inline-block mt-3 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
               Create Invoice
             </Link>
           </div>

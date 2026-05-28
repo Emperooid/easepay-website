@@ -96,27 +96,27 @@ export default function NewInvoicePage() {
 
   if (success) {
     return (
-      <div className="max-w-md mx-auto py-10 flex flex-col items-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center">
-          <CheckCircle2 size={44} className="text-green-500" />
+      <div className="max-w-sm mx-auto py-6 flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
+          <CheckCircle2 size={28} className="text-green-500" />
         </div>
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Invoice Created!</h2>
-          <p className="text-gray-500 mt-1 font-mono text-sm">{invoiceNumber}</p>
+          <h2 className="text-lg font-bold text-gray-900">Invoice Created!</h2>
+          <p className="text-gray-500 mt-0.5 font-mono text-xs">{invoiceNumber}</p>
         </div>
-        <div className="w-full bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+        <div className="w-full bg-white rounded-xl border border-gray-200 p-4 space-y-2">
           <div className="flex justify-between text-sm"><span className="text-gray-500">Customer</span><span className="font-semibold">{form.customerName}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-gray-500">Grand Total</span><span className="font-bold text-green-600 text-base">{formatCurrency(grandTotal)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Grand Total</span><span className="font-bold text-green-600">{formatCurrency(grandTotal)}</span></div>
           {form.vatRate !== '0' && <div className="flex justify-between text-sm"><span className="text-gray-500">VAT ({form.vatRate}%)</span><span>{formatCurrency(vatAmount)}</span></div>}
           <div className="flex justify-between text-sm"><span className="text-gray-500">Status</span><span className="font-medium">{form.status}</span></div>
         </div>
         <div className="flex gap-3 w-full">
           <button onClick={() => { setSuccess(false); setForm(f => ({ ...f, customerName: '', customerEmail: '', customerPhone: '', customerAddress: '', notes: '', terms: '' })); setItems([{ name: '', description: '', quantity: 1, unitPrice: 0 }]); }}
-            className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+            className="flex-1 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
             New Invoice
           </button>
           <button onClick={() => router.push('/dashboard/invoices')}
-            className="flex-1 py-3 bg-[#050A30] text-white rounded-xl text-sm font-semibold hover:bg-[#0a1460] transition-colors">
+            className="flex-1 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-colors">
             View All Invoices
           </button>
         </div>

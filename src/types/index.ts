@@ -11,6 +11,8 @@ export interface User {
   permissions?: string[];
   staffRole?: string;
   businessId?: string;
+  avatar?: string;
+  profileImage?: string;
   subscription?: { planName?: string; status?: string; interval?: string };
 }
 
