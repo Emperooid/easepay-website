@@ -28,7 +28,7 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
   const displayRole = user?.staffRole || user?.role || 'Manager';
 
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-5 flex-shrink-0">
+    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-5 shrink-0">
       <div className="flex items-center gap-2.5">
         <button onClick={onMenuClick} className="lg:hidden p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
           <Menu size={18} />
@@ -52,9 +52,9 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
         {/* User */}
         <div className="flex items-center gap-2">
           {avatarUrl ? (
-            <img src={avatarUrl} alt={displayName} className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-gray-200" />
+            <img src={avatarUrl} alt={displayName} className="w-8 h-8 rounded-full object-cover shrink-0 border border-gray-200" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-[#050A30] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#050A30] flex items-center justify-center text-white text-xs font-bold shrink-0">
               {initials}
             </div>
           )}
