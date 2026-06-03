@@ -2,6 +2,16 @@ import { ApiResponse } from '@/types';
 
 const BASE_URL = 'https://easepay-backend.onrender.com/api';
 
+type SubListener = () => void;
+const _subListeners: SubListener[] = [];
+export const subscriptionExpiredEvent = {
+  emit: () => _subListeners.forEach(fn => fn()),
+  subscribe: (fn: SubListener): (() => void) => {
+    _subListeners.push(fn);
+    return () => { const i = _subListeners.indexOf(fn); if (i >= 0) _subListeners.splice(i, 1); };
+  },
+};
+
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('authToken');
@@ -30,8 +40,9 @@ async function request<T = any>(
   const data = await res.json();
 
   if (!res.ok) {
-    if (res.status === 403 && data.code === 'SUBSCRIPTION_REQUIRED') {
-      return { success: false, message: data.message, code: 'SUBSCRIPTION_REQUIRED', data: null as T };
+    if (res.status === 403 && (data.code === 'TRIAL_EXPIRED' || data.code === 'SUBSCRIPTION_EXPIRED' || data.code === 'SUBSCRIPTION_REQUIRED')) {
+      subscriptionExpiredEvent.emit();
+      return { success: false, message: data.message, code: data.code, data: null as T };
     }
     return { success: false, message: data.message || `HTTP ${res.status}`, error: data.error, errors: data.errors, code: data.code };
   }
@@ -93,6 +104,7 @@ export const getSales = (params: { page?: number; limit?: number; startDate?: st
   return request(`/sales${qs ? `?${qs}` : ''}`);
 };
 export const getSale = (id: string) => request(`/sales/${id}`);
+export const deleteSale = (id: string) => request(`/sales/${id}`, { method: 'DELETE' });
 export const createSale = (data: { amount: number; paymentMethod: 'CASH' | 'CARD' | 'TRANSFER'; items: any[] }) =>
   request('/sales', { method: 'POST', body: JSON.stringify(data) });
 

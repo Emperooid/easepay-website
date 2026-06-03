@@ -2,21 +2,29 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSale, getExpense, getInvoice, deleteExpense, deleteInvoice, updateInvoiceStatus, sendInvoice } from '@/services/apiService';
+import {
+  getSale, getExpense, getInvoice,
+  deleteSale, deleteExpense, deleteInvoice,
+  updateInvoiceStatus, sendInvoice, getInvoiceDownloadLink,
+} from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge, statusBadge } from '@/components/ui/Badge';
 import {
   ChevronLeft, Loader2, ShoppingCart, Receipt, FileText,
-  Trash2, Send, MoreVertical, CheckCircle, Clock,
-  Banknote, CreditCard, ArrowLeftRight, User, Calendar,
-  Package, AlertTriangle, Download
+  Trash2, Send, CheckCircle, Banknote, CreditCard,
+  ArrowLeftRight, User, Calendar, Package, AlertTriangle,
+  Download, Share2, Printer,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { useState } from 'react';
 
-const TYPE_CONFIG: Record<string, { label: string; icon: any; color: string; bg: string; queryFn: (id: string) => any; deleteOp?: (id: string) => any }> = {
-  sale: { label: 'Sale', icon: ShoppingCart, color: 'text-green-600', bg: 'bg-green-50', queryFn: getSale },
+const TYPE_CONFIG: Record<string, {
+  label: string; icon: any; color: string; bg: string;
+  queryFn: (id: string) => any;
+  deleteOp?: (id: string) => any;
+}> = {
+  sale: { label: 'Sale', icon: ShoppingCart, color: 'text-green-600', bg: 'bg-green-50', queryFn: getSale, deleteOp: deleteSale },
   expense: { label: 'Expense', icon: Receipt, color: 'text-red-600', bg: 'bg-red-50', queryFn: getExpense, deleteOp: deleteExpense },
   invoice: { label: 'Invoice', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', queryFn: getInvoice, deleteOp: deleteInvoice },
 };
@@ -33,7 +41,7 @@ export default function TransactionDetailPage() {
 
   const config = TYPE_CONFIG[type?.toLowerCase()];
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['transaction', type, id],
     queryFn: () => config?.queryFn(id),
     enabled: !!config && !!id,
@@ -47,7 +55,11 @@ export default function TransactionDetailPage() {
 
   const statusMut = useMutation({
     mutationFn: (status: string) => updateInvoiceStatus(id, status),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['transaction', type, id] }); toast.success('Status updated'); setShowStatusMenu(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transaction', type, id] });
+      toast.success('Status updated');
+      setShowStatusMenu(false);
+    },
   });
 
   const sendMut = useMutation({
@@ -55,6 +67,29 @@ export default function TransactionDetailPage() {
     onSuccess: () => toast.success('Invoice sent via email!'),
     onError: (e: any) => toast.error(e.message || 'Failed to send'),
   });
+
+  const handleShare = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url)
+      .then(() => toast.success('Link copied to clipboard!'))
+      .catch(() => toast.error('Could not copy link'));
+  };
+
+  const handlePrint = () => window.print();
+
+  const handleDownloadPDF = async () => {
+    try {
+      const res = await getInvoiceDownloadLink(id);
+      const url = (res?.data as any)?.url || (res as any)?.url;
+      if (url) {
+        window.open(url, '_blank');
+      } else {
+        toast.error('Download link not available');
+      }
+    } catch {
+      toast.error('Failed to get download link');
+    }
+  };
 
   if (!config) {
     return (
@@ -70,7 +105,7 @@ export default function TransactionDetailPage() {
     return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={32} /></div>;
   }
 
-  const item = data?.data || data || {};
+  const item = (data?.data as any)?.sale || (data?.data as any)?.expense || (data?.data as any)?.invoice || data?.data || data || {};
   const TypeIcon = config.icon;
   const PaymentIcon = PAYMENT_ICONS[item.paymentMethod] || Banknote;
 
@@ -81,21 +116,42 @@ export default function TransactionDetailPage() {
   return (
     <div className="max-w-2xl space-y-4 animate-in fade-in duration-200">
       {/* Back + Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <button onClick={() => router.back()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors">
           <ChevronLeft size={16} /> Back
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Send email — invoice with email only */}
           {isInvoice && item.customerEmail && (
             <button onClick={() => sendMut.mutate()} disabled={sendMut.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
               {sendMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Send
             </button>
           )}
+          {/* Download PDF — invoices only */}
+          {isInvoice && (
+            <button onClick={handleDownloadPDF}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+              <Download size={13} /> Download PDF
+            </button>
+          )}
+          {/* Print */}
+          <button onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            <Printer size={13} /> Print
+          </button>
+          {/* Share link */}
+          <button onClick={handleShare}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+            <Share2 size={13} /> Share
+          </button>
+          {/* Delete */}
           {config.deleteOp && (
-            <button onClick={() => { if (confirm(`Delete this ${config.label.toLowerCase()}?`)) deleteMut.mutate(); }}
+            <button
+              onClick={() => { if (confirm(`Delete this ${config.label.toLowerCase()}?`)) deleteMut.mutate(); }}
               disabled={deleteMut.isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-100 transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 hover:bg-red-100 transition-colors"
+            >
               {deleteMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete
             </button>
           )}
@@ -126,8 +182,9 @@ export default function TransactionDetailPage() {
                 <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[160px] overflow-hidden">
                   {['PAID', 'PENDING', 'OVERDUE', 'CANCELLED'].map(s => (
                     <button key={s} onClick={() => statusMut.mutate(s)}
-                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 ${item.status === s ? 'font-bold text-[#050A30]' : 'text-gray-700'}`}>
-                      {s} {item.status === s && '✓'}
+                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 ${item.status === s ? 'font-bold text-[#050A30]' : 'text-gray-700'}`}>
+                      {item.status === s && <CheckCircle size={13} className="text-[#050A30]" />}
+                      {s}
                     </button>
                   ))}
                 </div>
@@ -185,19 +242,22 @@ export default function TransactionDetailPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900">{formatCurrency(li.total || (li.quantity * li.price))}</p>
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(li.total || (li.quantity * (li.unitPrice || li.price)))}</p>
                   <p className="text-xs text-gray-400">{li.quantity} × {formatCurrency(li.unitPrice || li.price)}</p>
                 </div>
               </div>
             ))}
           </div>
           {/* Totals */}
-          {isInvoice && (
+          {(isInvoice || isSale) && (
             <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 space-y-2">
-              <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatCurrency(item.subtotal || 0)}</span></div>
+              {item.subtotal > 0 && <div className="flex justify-between text-sm text-gray-600"><span>Subtotal</span><span>{formatCurrency(item.subtotal || 0)}</span></div>}
               {item.vatAmount > 0 && <div className="flex justify-between text-sm text-gray-600"><span>VAT ({item.vatRate}%)</span><span>{formatCurrency(item.vatAmount)}</span></div>}
               {item.discount > 0 && <div className="flex justify-between text-sm text-green-600"><span>Discount</span><span>-{formatCurrency(item.discount)}</span></div>}
-              <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200"><span>Grand Total</span><span>{formatCurrency(item.grandTotal)}</span></div>
+              <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
+                <span>Total</span>
+                <span>{formatCurrency(item.grandTotal || item.amount || 0)}</span>
+              </div>
             </div>
           )}
         </div>
@@ -219,7 +279,6 @@ export default function TransactionDetailPage() {
         </div>
       )}
 
-      {/* Click outside to close menu */}
       {showStatusMenu && <div className="fixed inset-0 z-0" onClick={() => setShowStatusMenu(false)} />}
     </div>
   );

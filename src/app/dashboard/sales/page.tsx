@@ -2,13 +2,13 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { getSales, createSale, getInventory } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Badge, statusBadge } from '@/components/ui/Badge';
 import {
   Plus, Search, Loader2, ShoppingCart, Trash2, CheckCircle2,
-  ChevronDown, ChevronUp, ReceiptText, Banknote, CreditCard,
-  ArrowLeftRight, X, Filter, SlidersHorizontal, Package
+  Banknote, CreditCard, ArrowLeftRight, X, Package,
+  ChevronLeft, ChevronRight, Share2, ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -28,10 +28,13 @@ const PAYMENT_METHODS = [
   { value: 'POS', label: 'POS/Card', icon: CreditCard },
 ];
 
+const PAGE_SIZE = 20;
+
 export default function SalesPage() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>('list');
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [filterOpen, setFilterOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
@@ -44,15 +47,24 @@ export default function SalesPage() {
   const [showCustom, setShowCustom] = useState(false);
   const qc = useQueryClient();
 
-  const { data: salesData, isLoading } = useQuery({ queryKey: ['sales'], queryFn: () => getSales({ limit: 100 }) });
-  const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => getInventory({ limit: 200 }), enabled: step === 'new' });
+  const { data: salesData, isLoading, isFetching } = useQuery({
+    queryKey: ['sales', page],
+    queryFn: () => getSales({ page, limit: PAGE_SIZE }),
+  });
+  const { data: inventoryData } = useQuery({
+    queryKey: ['inventory'],
+    queryFn: () => getInventory({ limit: 200 }),
+    enabled: step === 'new',
+  });
 
   const createMutation = useMutation({
     mutationFn: createSale,
     onSuccess: (res) => {
+      if (!res.success) return;
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['dashboard-home'] });
-      setLastSale(res.data || res);
+      const saleData = (res.data as any)?.sale || res.data || res;
+      setLastSale(saleData);
       setStep('success');
     },
     onError: (err: any) => toast.error(err.message || 'Failed to record sale'),
@@ -66,6 +78,10 @@ export default function SalesPage() {
       s.customerName?.toLowerCase().includes(search.toLowerCase())
     );
   }, [salesData, search]);
+
+  const paginationInfo = (salesData?.data as any)?.pagination || null;
+  const totalPages = paginationInfo?.totalPages || 1;
+  const totalCount = paginationInfo?.total ?? sales.length;
 
   const products = useMemo(() => {
     const raw = (inventoryData?.data as any)?.items || (inventoryData as any)?.items || inventoryData?.data || [];
@@ -133,9 +149,19 @@ export default function SalesPage() {
     setShowCustom(false);
   };
 
-  const goToList = () => { resetNew(); setStep('list'); };
+  const goToList = () => { resetNew(); setStep('list'); setPage(1); };
+
+  const handleShareReceipt = () => {
+    const id = lastSale?.id || lastSale?.saleId;
+    if (!id) { toast.error('Receipt link not available'); return; }
+    const url = `${window.location.origin}/dashboard/transactions/sale/${id}`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast.success('Receipt link copied!'))
+      .catch(() => toast.error('Could not copy link'));
+  };
 
   if (step === 'success') {
+    const saleId = lastSale?.id || lastSale?.saleId;
     return (
       <div className="max-w-sm mx-auto py-6 flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
         <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
@@ -159,6 +185,24 @@ export default function SalesPage() {
             ))}
           </div>
         </div>
+
+        {saleId && (
+          <div className="w-full space-y-2">
+            <button
+              onClick={handleShareReceipt}
+              className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Share2 size={15} /> Share Receipt Link
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard/transactions/sale/${saleId}`)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 border border-[#050A30]/20 bg-[#050A30]/5 rounded-xl text-sm font-semibold text-[#050A30] hover:bg-[#050A30]/10 transition-colors"
+            >
+              <ExternalLink size={15} /> View Receipt
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-3 w-full">
           <button onClick={() => { resetNew(); setStep('new'); }} className="flex-1 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
             New Sale
@@ -201,7 +245,7 @@ export default function SalesPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {products.map((p: any) => (
                     <button key={p.id} onClick={() => addToCart(p)} disabled={p.quantity === 0}
-                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-[#050A30]/5 border border-transparent hover:border-[#050A30]/20 rounded-xl text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed group">
+                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-[#050A30]/5 border border-transparent hover:border-[#050A30]/20 rounded-xl text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{p.category} · {p.quantity} in stock</p>
@@ -215,7 +259,6 @@ export default function SalesPage() {
                 </div>
               )}
 
-              {/* Custom Item */}
               {showCustom ? (
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
                   <p className="text-xs font-semibold text-blue-700">Custom Item</p>
@@ -269,7 +312,6 @@ export default function SalesPage() {
             </div>
 
             <div className="p-4 border-t border-gray-100 space-y-3">
-              {/* Discount */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">Discount</span>
@@ -284,15 +326,13 @@ export default function SalesPage() {
                 <input type="number" value={discountValue} onChange={e => setDiscountValue(e.target.value)} placeholder="0" min="0" className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#050A30]" />
               </div>
 
-              {/* VAT */}
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="text-xs text-gray-500">VAT (7.5%)</span>
-                <div onClick={() => setVatEnabled(v => !v)} className={`relative w-9 h-5 rounded-full transition-colors ${vatEnabled ? 'bg-[#050A30]' : 'bg-gray-200'}`}>
+                <div onClick={() => setVatEnabled(v => !v)} className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${vatEnabled ? 'bg-[#050A30]' : 'bg-gray-200'}`}>
                   <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${vatEnabled ? 'left-4' : 'left-0.5'}`} />
                 </div>
               </label>
 
-              {/* Totals */}
               <div className="space-y-1 pt-1">
                 <div className="flex justify-between text-xs text-gray-500"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
                 {discount > 0 && <div className="flex justify-between text-xs text-green-600"><span>Discount</span><span>-{formatCurrency(discount)}</span></div>}
@@ -300,7 +340,6 @@ export default function SalesPage() {
                 <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t"><span>Total</span><span>{formatCurrency(total)}</span></div>
               </div>
 
-              {/* Payment Method */}
               <div className="grid grid-cols-3 gap-1">
                 {PAYMENT_METHODS.map(({ value, label, icon: Icon }) => (
                   <button key={value} onClick={() => setPaymentMethod(value)}
@@ -328,20 +367,27 @@ export default function SalesPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sales..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search sales..."
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white"
+          />
         </div>
-        <button onClick={() => setStep('new')}
-          className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-all hover:shadow-md">
+        <button
+          onClick={() => setStep('new')}
+          className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-all hover:shadow-md"
+        >
           <Plus size={15} /> Record Sale
         </button>
       </div>
 
       {/* Summary Strip */}
-      {!isLoading && sales.length > 0 && (
+      {!isLoading && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Total Sales', value: sales.length, color: 'text-gray-900' },
-            { label: 'Revenue', value: formatCurrency(sales.reduce((s: number, x: any) => s + Number(x.amount || 0), 0)), color: 'text-green-600' },
+            { label: 'Total Sales', value: totalCount, color: 'text-gray-900' },
+            { label: 'Revenue (Page)', value: formatCurrency(sales.reduce((s: number, x: any) => s + Number(x.amount || 0), 0)), color: 'text-green-600' },
             { label: 'Today', value: sales.filter((s: any) => new Date(s.createdAt || s.date).toDateString() === new Date().toDateString()).length, color: 'text-blue-600' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 px-3 py-2.5">
@@ -372,20 +418,27 @@ export default function SalesPage() {
               <div className="col-span-3">Date</div>
               <div className="col-span-2 text-right">Amount</div>
             </div>
-            <div className="divide-y divide-gray-50">
+            <div className={`divide-y divide-gray-50 ${isFetching ? 'opacity-60' : ''} transition-opacity`}>
               {sales.map((sale: any) => {
                 const itemNames = sale.items?.map((i: any) => i.name).join(', ') || sale.description || 'Sale';
                 return (
-                  <div key={sale.id} className="grid grid-cols-12 items-center px-4 py-3 hover:bg-gray-50/80 transition-colors group cursor-pointer">
+                  <div
+                    key={sale.id}
+                    onClick={() => router.push(`/dashboard/transactions/sale/${sale.id}`)}
+                    className="grid grid-cols-12 items-center px-4 py-3 hover:bg-[#050A30]/5 transition-colors cursor-pointer group"
+                  >
                     <div className="col-span-12 sm:col-span-5">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{itemNames}</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-[#050A30] transition-colors">{itemNames}</p>
                       {sale.customerName && <p className="text-xs text-gray-400 mt-0.5">{sale.customerName}</p>}
                     </div>
                     <div className="hidden sm:flex col-span-2 justify-center">
                       <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{sale.paymentMethod || 'CASH'}</span>
                     </div>
                     <div className="hidden sm:block col-span-3 text-xs text-gray-400">{formatDate(sale.createdAt || sale.date)}</div>
-                    <div className="hidden sm:block col-span-2 text-right text-sm font-bold text-green-600">{formatCurrency(sale.amount)}</div>
+                    <div className="hidden sm:flex col-span-2 justify-end items-center gap-2">
+                      <span className="text-sm font-bold text-green-600">{formatCurrency(sale.amount)}</span>
+                      <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                    </div>
                     <div className="sm:hidden flex items-center justify-between mt-1">
                       <span className="text-xs text-gray-400">{formatDate(sale.createdAt || sale.date)}</span>
                       <span className="text-sm font-bold text-green-600">{formatCurrency(sale.amount)}</span>
@@ -394,6 +447,31 @@ export default function SalesPage() {
                 );
               })}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
+                <p className="text-xs text-gray-500">
+                  Page {page} of {totalPages} · {totalCount} total records
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1 || isFetching}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={13} /> Previous
+                  </button>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages || isFetching}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

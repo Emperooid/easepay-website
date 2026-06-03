@@ -63,8 +63,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         const res = await api.getCurrentUser();
         if (res.success && res.user) {
-          localStorage.setItem('cachedUser', JSON.stringify(res.user));
-          dispatch({ type: 'AUTH_SUCCESS', payload: res.user });
+          // Also fetch business profile to get the most up-to-date business name
+          let user = res.user;
+          try {
+            const bpRes = await api.getBusinessProfile();
+            const d = (bpRes?.data as any);
+            const bizName =
+              d?.business?.name ||
+              d?.business?.businessName ||
+              d?.businessName ||
+              d?.name ||
+              d?.business_name ||
+              d?.profile?.businessName ||
+              d?.profile?.name ||
+              d?.businessProfile?.name ||
+              d?.businessProfile?.businessName;
+            if (bizName) user = { ...user, businessName: bizName };
+          } catch {}
+          localStorage.setItem('cachedUser', JSON.stringify(user));
+          dispatch({ type: 'AUTH_SUCCESS', payload: user });
         } else {
           api.logout();
           dispatch({ type: 'LOGOUT' });
