@@ -62,6 +62,8 @@ export default function SalesPage() {
     onSuccess: (res) => {
       if (!res.success) return;
       qc.invalidateQueries({ queryKey: ['sales'] });
+      qc.invalidateQueries({ queryKey: ['sales-all'] });
+      qc.invalidateQueries({ queryKey: ['sales-recent'] });
       qc.invalidateQueries({ queryKey: ['dashboard-home'] });
       const saleData = (res.data as any)?.sale || res.data || res;
       setLastSale(saleData);

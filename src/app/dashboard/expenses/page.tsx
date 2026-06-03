@@ -50,11 +50,18 @@ export default function ExpensesPage() {
 
   const { data, isLoading } = useQuery({ queryKey: ['expenses'], queryFn: () => getExpenses({ limit: 100 }) });
 
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['expenses'] });
+    qc.invalidateQueries({ queryKey: ['expenses-all'] });
+    qc.invalidateQueries({ queryKey: ['expenses-recent'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+  };
+
   const createMut = useMutation({
     mutationFn: createExpense,
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['expenses'] });
-      qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+      if (!res.success) return;
+      invalidateAll();
       setLastExpense(res.data || res);
       setStep('success');
     },
@@ -63,7 +70,7 @@ export default function ExpensesPage() {
 
   const deleteMut = useMutation({
     mutationFn: deleteExpense,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expenses'] }); toast.success('Expense deleted'); },
+    onSuccess: () => { invalidateAll(); toast.success('Expense deleted'); },
     onError: () => toast.error('Failed to delete'),
   });
 

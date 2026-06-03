@@ -8,8 +8,9 @@ import { getDashboardHome, getSales, getExpenses, getBalanceSettings, getInvoice
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
-  Plus, Minus, Wallet, Building2, TrendingUp, ArrowRight,
+  Plus, Minus, Wallet, Building2, TrendingUp,
   ShoppingCart, Receipt, FileText, Package, ChevronRight, Loader2,
+  Search, X,
 } from 'lucide-react';
 
 function HealthGauge({ score }: { score: number }) {
@@ -37,19 +38,27 @@ function HealthGauge({ score }: { score: number }) {
   );
 }
 
-function computeTodayProfit(allSales: any[], allExpenses: any[]): number {
+function computeTodayProfit(allSales: any[], allInvoices: any[], allExpenses: any[]): number {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const revenue = allSales
+  const salesRevenue = allSales
     .filter(s => new Date(s.createdAt || s.date || 0) >= todayStart)
     .reduce((sum, s) => sum + (parseFloat(s.amount) || parseFloat(s.total) || 0), 0);
 
-  const expenses = allExpenses
+  const invoiceRevenue = allInvoices
+    .filter(inv => {
+      const d = new Date(inv.createdAt || inv.invoiceDate || inv.date || 0);
+      const status = (inv.status || '').toUpperCase();
+      return d >= todayStart && status !== 'CANCELLED' && status !== 'DRAFT';
+    })
+    .reduce((sum, inv) => sum + (parseFloat(inv.grandTotal) || parseFloat(inv.total) || parseFloat(inv.amount) || 0), 0);
+
+  const expensesTotal = allExpenses
     .filter(e => new Date(e.createdAt || e.date || 0) >= todayStart)
     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
 
-  return revenue - expenses;
+  return salesRevenue + invoiceRevenue - expensesTotal;
 }
 
 function computeBalances(
@@ -90,20 +99,28 @@ export default function DashboardPage() {
   const router = useRouter();
   const [displayLimit, setDisplayLimit] = useState(20);
 
-  const { data: homeData } = useQuery({ queryKey: ['dashboard-home'], queryFn: getDashboardHome });
+  const [activitySearch, setActivitySearch] = useState('');
+
+  const { data: homeData } = useQuery({
+    queryKey: ['dashboard-home'],
+    queryFn: getDashboardHome,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  });
   const { data: balanceData } = useQuery({ queryKey: ['balance-settings'], queryFn: getBalanceSettings });
 
   const home = ((homeData?.data as any)?.data || homeData?.data || homeData || {}) as any;
   const healthScore = home?.businessHealthScore || home?.healthScore || home?.score || 0;
 
-  const { data: allSalesData } = useQuery({ queryKey: ['sales-all'], queryFn: () => getSales({ limit: 1000 }) });
-  const { data: allInvData } = useQuery({ queryKey: ['invoices-all'], queryFn: () => getInvoices({ limit: 1000 }) });
-  const { data: allExpData } = useQuery({ queryKey: ['expenses-all'], queryFn: () => getExpenses({ limit: 1000 }) });
+  const { data: allSalesData } = useQuery({ queryKey: ['sales-all'], queryFn: () => getSales({ limit: 1000 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
+  const { data: allInvData } = useQuery({ queryKey: ['invoices-all'], queryFn: () => getInvoices({ limit: 1000 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
+  const { data: allExpData } = useQuery({ queryKey: ['expenses-all'], queryFn: () => getExpenses({ limit: 1000 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
 
-  const { data: recentSalesData } = useQuery({ queryKey: ['sales-recent'], queryFn: () => getSales({ limit: 200 }) });
-  const { data: recentExpData } = useQuery({ queryKey: ['expenses-recent'], queryFn: () => getExpenses({ limit: 200 }) });
-  const { data: recentInvData } = useQuery({ queryKey: ['invoices-recent'], queryFn: () => getInvoices({ limit: 200 }) });
-  const { data: recentStockData } = useQuery({ queryKey: ['inventory-recent'], queryFn: () => getInventory({ limit: 200 }) });
+  const { data: recentSalesData } = useQuery({ queryKey: ['sales-recent'], queryFn: () => getSales({ limit: 200 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
+  const { data: recentExpData } = useQuery({ queryKey: ['expenses-recent'], queryFn: () => getExpenses({ limit: 200 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
+  const { data: recentInvData } = useQuery({ queryKey: ['invoices-recent'], queryFn: () => getInvoices({ limit: 200 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
+  const { data: recentStockData } = useQuery({ queryKey: ['inventory-recent'], queryFn: () => getInventory({ limit: 200 }), staleTime: 0, refetchOnMount: true, refetchOnWindowFocus: true });
 
   const balRaw = (balanceData?.data || balanceData) as any;
   const startCash = parseFloat(String(balRaw?.cashBalance ?? balRaw?.cashInHand ?? 0)) || 0;
@@ -113,11 +130,11 @@ export default function DashboardPage() {
   const allInvoices: any[] = (allInvData?.data as any)?.invoices || (allInvData as any)?.invoices || allInvData?.data || [];
   const allExpenses: any[] = (allExpData?.data as any)?.expenses || (allExpData as any)?.expenses || allExpData?.data || [];
 
-  // Today's profit: API first, computed fallback
-  const apiProfit = home?.todayProfit ?? home?.todayRevenue ?? home?.netProfit;
-  const todayProfit = typeof apiProfit === 'number' && apiProfit !== 0
+  // Today's profit: API value first (trust the backend), local fallback includes both sales + invoices
+  const apiProfit = home?.todayProfit ?? home?.todayRevenue ?? home?.netProfit ?? home?.stats?.todayProfit;
+  const todayProfit = typeof apiProfit === 'number'
     ? apiProfit
-    : computeTodayProfit(allSales, allExpenses);
+    : computeTodayProfit(allSales, allInvoices, allExpenses);
 
   const { cashInHand, bankBalance } = computeBalances(allSales, allInvoices, allExpenses, startCash, startBank);
 
@@ -166,6 +183,18 @@ export default function DashboardPage() {
     })),
   ]
     .sort((a, b) => b._ts - a._ts);
+
+  const filteredRecent = activitySearch.trim()
+    ? recent.filter(item => {
+        const q = activitySearch.toLowerCase();
+        return (
+          item.label.toLowerCase().includes(q) ||
+          item.subLabel.toLowerCase().includes(q) ||
+          item._type.includes(q) ||
+          (item.paymentMethod || '').toLowerCase().includes(q)
+        );
+      })
+    : recent;
 
   const today = new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -269,11 +298,30 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-2.5">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-              Recent Activity <span className="text-gray-300 font-normal normal-case">({recent.length})</span>
+              Recent Activity <span className="text-gray-300 font-normal normal-case">({filteredRecent.length}{activitySearch ? ` of ${recent.length}` : ''})</span>
             </p>
           </div>
+          {/* Search */}
+          <div className="relative mb-2">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={activitySearch}
+              onChange={e => { setActivitySearch(e.target.value); setDisplayLimit(20); }}
+              placeholder="Search activities…"
+              className="w-full pl-8 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#050A30]/20 focus:border-[#050A30]/40"
+            />
+            {activitySearch && (
+              <button onClick={() => setActivitySearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X size={12} />
+              </button>
+            )}
+          </div>
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
-            {recent.slice(0, displayLimit).map((item) => {
+            {filteredRecent.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <p className="text-xs">No activities match &quot;{activitySearch}&quot;</p>
+              </div>
+            ) : filteredRecent.slice(0, displayLimit).map((item) => {
               const cfg = TYPE_CONFIG[item._type];
               const Icon = cfg.icon;
               const isClickable = item._type !== 'stock';
@@ -318,13 +366,13 @@ export default function DashboardPage() {
                 <div key={item._key}>{content}</div>
               );
             })}
-            {displayLimit < recent.length && (
+            {displayLimit < filteredRecent.length && (
               <button
                 onClick={() => setDisplayLimit(l => l + 20)}
                 className="w-full flex items-center justify-center gap-2 py-3.5 text-xs font-semibold text-[#050A30] hover:bg-[#050A30]/5 transition-colors"
               >
                 <Loader2 size={13} className="opacity-50" />
-                Load More · {recent.length - displayLimit} remaining
+                Load More · {filteredRecent.length - displayLimit} remaining
               </button>
             )}
           </div>

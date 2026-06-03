@@ -33,27 +33,40 @@ export default function InvoicesPage() {
   const { data, isLoading } = useQuery({ queryKey: ['invoices', status], queryFn: () => getInvoices({ status, limit: 100 }) });
   const { data: nextNumData } = useQuery({ queryKey: ['next-invoice'], queryFn: getNextInvoiceNumber, enabled: showModal });
 
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['invoices'] });
+    qc.invalidateQueries({ queryKey: ['invoices-all'] });
+    qc.invalidateQueries({ queryKey: ['invoices-recent'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+  };
+
   const createMut = useMutation({
     mutationFn: createInvoice,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); setShowModal(false); resetForm(); toast.success('Invoice created!'); },
+    onSuccess: (res) => {
+      if (!res.success) return;
+      invalidateAll();
+      setShowModal(false);
+      resetForm();
+      toast.success('Invoice created!');
+    },
     onError: (e: any) => toast.error(e.message || 'Failed to create invoice'),
   });
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }: any) => updateInvoiceStatus(id, status),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Status updated'); setOpenMenuId(null); },
+    onSuccess: () => { invalidateAll(); toast.success('Status updated'); setOpenMenuId(null); },
     onError: () => toast.error('Failed to update status'),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteInvoice,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Invoice deleted'); setOpenMenuId(null); },
+    onSuccess: () => { invalidateAll(); toast.success('Invoice deleted'); setOpenMenuId(null); },
     onError: () => toast.error('Failed to delete'),
   });
 
   const sendMut = useMutation({
     mutationFn: sendInvoice,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['invoices'] }); toast.success('Invoice sent!'); setOpenMenuId(null); },
+    onSuccess: () => { invalidateAll(); toast.success('Invoice sent!'); setOpenMenuId(null); },
     onError: (e: any) => toast.error(e.message || 'Failed to send invoice'),
   });
 
