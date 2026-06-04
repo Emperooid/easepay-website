@@ -9,7 +9,8 @@ import {
   Plus, Search, Loader2, Receipt, Trash2, CheckCircle2,
   Banknote, CreditCard, ArrowLeftRight, X, ShoppingBag,
   Zap, Home, Truck, Users, Megaphone, Wrench, Package,
-  Coffee, Wifi, Heart, HelpCircle, MoreHorizontal
+  Coffee, Wifi, Heart, HelpCircle, MoreHorizontal,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -34,12 +35,22 @@ const PAYMENT_METHODS = [
   { value: 'POS', label: 'POS/Card', icon: CreditCard },
 ];
 
+const PAGE_SIZE = 20;
+
+function getPageNums(cur: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (cur <= 4)          return [1, 2, 3, 4, 5, '…', total];
+  if (cur >= total - 3)  return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
+  return [1, '…', cur - 1, cur, cur + 1, '…', total];
+}
+
 type Step = 'list' | 'new' | 'success';
 
 export default function ExpensesPage() {
   const [step, setStep] = useState<Step>('list');
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     amount: '', category: '', description: '',
     date: new Date().toISOString().split('T')[0],
@@ -74,7 +85,7 @@ export default function ExpensesPage() {
     onError: () => toast.error('Failed to delete'),
   });
 
-  const expenses = useMemo(() => {
+  const allExpenses = useMemo(() => {
     const raw = (data?.data as any)?.expenses || (data as any)?.expenses || data?.data || [];
     return raw.filter((e: any) => {
       const matchSearch = !search || e.description?.toLowerCase().includes(search.toLowerCase()) || e.category?.toLowerCase().includes(search.toLowerCase()) || e.vendor?.toLowerCase().includes(search.toLowerCase());
@@ -82,6 +93,9 @@ export default function ExpensesPage() {
       return matchSearch && matchCat;
     });
   }, [data, search, filterCategory]);
+
+  const totalPages = Math.max(1, Math.ceil(allExpenses.length / PAGE_SIZE));
+  const expenses = allExpenses.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const totalExpenses = useMemo(() => {
     const raw = (data?.data as any)?.expenses || (data as any)?.expenses || data?.data || [];
@@ -92,6 +106,7 @@ export default function ExpensesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (createMut.isPending) return;
     if (!form.category) { toast.error('Select a category'); return; }
     createMut.mutate({
       amount: parseFloat(form.amount),
@@ -223,9 +238,9 @@ export default function ExpensesPage() {
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="relative flex-1 max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search expenses..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search expenses..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
           </div>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white">
+          <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white">
             <option value="">All Categories</option>
             {CATEGORIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>
@@ -264,31 +279,62 @@ export default function ExpensesPage() {
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50">
-            {expenses.map((exp: any) => {
-              const catInfo = CATEGORIES.find(c => c.name === exp.category);
-              const Icon = catInfo?.icon || HelpCircle;
-              return (
-                <div key={exp.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/80 transition-colors group">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${catInfo?.color || 'bg-gray-100 text-gray-500'}`}>
-                    <Icon size={16} />
+          <>
+            <div className="divide-y divide-gray-50">
+              {expenses.map((exp: any) => {
+                const catInfo = CATEGORIES.find(c => c.name === exp.category);
+                const Icon = catInfo?.icon || HelpCircle;
+                return (
+                  <div key={exp.id || exp._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/80 transition-colors group">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${catInfo?.color || 'bg-gray-100 text-gray-500'}`}>
+                      <Icon size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{exp.description}</p>
+                      <p className="text-xs text-gray-400">{exp.category} {exp.vendor ? `· ${exp.vendor}` : ''} · {formatDate(exp.date || exp.createdAt)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{exp.paymentMethod || 'CASH'}</span>
+                      <p className="text-sm font-bold text-red-600">-{formatCurrency(exp.amount)}</p>
+                      <button onClick={() => { if (confirm('Delete this expense?')) deleteMut.mutate(exp.id || exp._id); }}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{exp.description}</p>
-                    <p className="text-xs text-gray-400">{exp.category} {exp.vendor ? `· ${exp.vendor}` : ''} · {formatDate(exp.date || exp.createdAt)}</p>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{exp.paymentMethod || 'CASH'}</span>
-                    <p className="text-sm font-bold text-red-600">-{formatCurrency(exp.amount)}</p>
-                    <button onClick={() => { if (confirm('Delete this expense?')) deleteMut.mutate(exp.id); }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                );
+              })}
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <p className="text-xs text-gray-400">
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, allExpenses.length)} of {allExpenses.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <ChevronLeft size={14} />
+                  </button>
+                  {getPageNums(page, totalPages).map((n, i) =>
+                    n === '…' ? (
+                      <span key={`dot-${i}`} className="w-8 h-8 flex items-center justify-center text-gray-400 text-sm">…</span>
+                    ) : (
+                      <button key={n} onClick={() => setPage(Number(n))}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                          page === n ? 'bg-[#050A30] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {n}
+                      </button>
+                    )
+                  )}
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -105,7 +105,16 @@ export default function TransactionDetailPage() {
     return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={32} /></div>;
   }
 
-  const item = (data?.data as any)?.sale || (data?.data as any)?.expense || (data?.data as any)?.invoice || data?.data || data || {};
+  const item =
+    (data?.data as any)?.sale ||
+    (data?.data as any)?.expense ||
+    (data?.data as any)?.invoice ||
+    (data as any)?.sale ||
+    (data as any)?.expense ||
+    (data as any)?.invoice ||
+    data?.data ||
+    data ||
+    {};
   const TypeIcon = config.icon;
   const PaymentIcon = PAYMENT_ICONS[item.paymentMethod] || Banknote;
 
@@ -169,7 +178,7 @@ export default function TransactionDetailPage() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{config.label}</p>
               {isInvoice && <p className="font-mono text-sm font-bold text-[#050A30] mt-0.5">{item.invoiceNumber}</p>}
               <p className={`text-2xl font-bold mt-1 ${isExpense ? 'text-red-600' : 'text-green-600'}`}>
-                {isExpense ? '-' : '+'}{formatCurrency(item.grandTotal || item.amount || 0)}
+                {isExpense ? '-' : '+'}{formatCurrency(item.grandTotal || item.total || item.amount || 0)}
               </p>
             </div>
           </div>
@@ -256,7 +265,7 @@ export default function TransactionDetailPage() {
               {item.discount > 0 && <div className="flex justify-between text-sm text-green-600"><span>Discount</span><span>-{formatCurrency(item.discount)}</span></div>}
               <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
                 <span>Total</span>
-                <span>{formatCurrency(item.grandTotal || item.amount || 0)}</span>
+                <span>{formatCurrency(item.grandTotal || item.total || item.amount || 0)}</span>
               </div>
             </div>
           )}

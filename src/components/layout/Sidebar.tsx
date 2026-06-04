@@ -6,13 +6,14 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import {
   Home, Package, BarChart3, Activity, ShoppingCart,
-  Receipt, FileText, Calculator, Building2, Settings, LogOut, X,
+  Receipt, FileText, Calculator, Building2, Settings, LogOut, X, Clock,
 } from 'lucide-react';
 
 const navGroups = [
   {
     items: [
       { href: '/dashboard', label: 'Home', icon: Home, exact: true },
+      { href: '/dashboard/activity', label: 'All Activity', icon: Clock, exact: false },
     ],
   },
   {

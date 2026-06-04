@@ -16,6 +16,7 @@ interface CartItem {
   id: string;
   name: string;
   price: number;
+  costPrice: number;
   quantity: number;
   maxQty?: number;
 }
@@ -29,6 +30,13 @@ const PAYMENT_METHODS = [
 ];
 
 const PAGE_SIZE = 20;
+
+function getPageNums(cur: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (cur <= 4)          return [1, 2, 3, 4, 5, '…', total];
+  if (cur >= total - 3)  return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
+  return [1, '…', cur - 1, cur, cur + 1, '…', total];
+}
 
 export default function SalesPage() {
   const router = useRouter();
@@ -50,6 +58,9 @@ export default function SalesPage() {
   const { data: salesData, isLoading, isFetching } = useQuery({
     queryKey: ['sales', page],
     queryFn: () => getSales({ page, limit: PAGE_SIZE }),
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
   const { data: inventoryData } = useQuery({
     queryKey: ['inventory'],
@@ -107,7 +118,14 @@ export default function SalesPage() {
         }
         return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
-      return [...prev, { id: product.id, name: product.name, price: product.unitPrice, quantity: 1, maxQty: product.quantity }];
+      return [...prev, {
+        id: product.id,
+        name: product.name,
+        price: parseFloat(product.unitPrice) || 0,
+        costPrice: parseFloat(product.costPrice) || 0,
+        quantity: 1,
+        maxQty: product.quantity,
+      }];
     });
   };
 
@@ -123,21 +141,34 @@ export default function SalesPage() {
   const addCustomItem = () => {
     if (!customItem.name || !customItem.price) return;
     const id = `custom-${Date.now()}`;
-    setCart(prev => [...prev, { id, name: customItem.name, price: parseFloat(customItem.price), quantity: 1 }]);
+    setCart(prev => [...prev, { id, name: customItem.name, price: parseFloat(customItem.price), costPrice: 0, quantity: 1 }]);
     setCustomItem({ name: '', price: '' });
     setShowCustom(false);
   };
 
   const handleSale = () => {
+    if (createMutation.isPending) return;
     if (cart.length === 0) { toast.error('Add items to cart first'); return; }
     createMutation.mutate({
-      amount: total,
+      customerName: customerName.trim() || 'Walk-in Customer',
       paymentMethod,
-      items: cart.map(i => ({ id: i.id.startsWith('custom-') ? undefined : i.id, name: i.name, quantity: i.quantity, price: i.price })),
-      customerName: customerName || undefined,
-      vatAmount: vat || undefined,
-      discount: discount || undefined,
-    } as any);
+      amount: total,
+      grandTotal: total,
+      total,
+      subTotal: subtotal,
+      discountAmount: discount || 0,
+      discountType: discountType === 'percent' ? 'Percent' : 'Amount',
+      vatIncluded: vatEnabled,
+      taxAmount: vat || 0,
+      items: cart.map(i => ({
+        inventoryItemId: i.id.startsWith('custom-') ? undefined : i.id,
+        name: i.name,
+        quantity: i.quantity,
+        unitPrice: i.price,
+        amount: i.price * i.quantity,
+        costPrice: i.costPrice || 0,
+      })),
+    });
   };
 
   const resetNew = () => {
@@ -425,8 +456,8 @@ export default function SalesPage() {
                 const itemNames = sale.items?.map((i: any) => i.name).join(', ') || sale.description || 'Sale';
                 return (
                   <div
-                    key={sale.id}
-                    onClick={() => router.push(`/dashboard/transactions/sale/${sale.id}`)}
+                    key={sale.id || sale._id}
+                    onClick={() => router.push(`/dashboard/transactions/sale/${sale.id || sale._id}`)}
                     className="grid grid-cols-12 items-center px-4 py-3 hover:bg-[#050A30]/5 transition-colors cursor-pointer group"
                   >
                     <div className="col-span-12 sm:col-span-5">
@@ -452,24 +483,30 @@ export default function SalesPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-                <p className="text-xs text-gray-500">
-                  Page {page} of {totalPages} · {totalCount} total records
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <p className="text-xs text-gray-400">
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount}
                 </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1 || isFetching}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft size={13} /> Previous
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1 || isFetching}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <ChevronLeft size={14} />
                   </button>
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages || isFetching}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next <ChevronRight size={13} />
+                  {getPageNums(page, totalPages).map((n, i) =>
+                    n === '…' ? (
+                      <span key={`dot-${i}`} className="w-8 h-8 flex items-center justify-center text-gray-400 text-sm">…</span>
+                    ) : (
+                      <button key={n} onClick={() => setPage(Number(n))} disabled={isFetching}
+                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                          page === n ? 'bg-[#050A30] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}>
+                        {n}
+                      </button>
+                    )
+                  )}
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || isFetching}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <ChevronRight size={14} />
                   </button>
                 </div>
               </div>

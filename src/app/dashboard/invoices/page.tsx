@@ -8,17 +8,26 @@ import { Badge, statusBadge } from '@/components/ui/Badge';
 import {
   Plus, Search, Loader2, FileText, Trash2, X, Send,
   Download, MoreVertical, CheckCircle, Clock, AlertCircle,
-  ChevronDown, Eye
+  ChevronDown, Eye, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
 const STATUSES = ['ALL', 'PAID', 'PENDING', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'];
+const PAGE_SIZE = 20;
+
+function getPageNums(cur: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (cur <= 4)          return [1, 2, 3, 4, 5, '…', total];
+  if (cur >= total - 3)  return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
+  return [1, '…', cur - 1, cur, cur + 1, '…', total];
+}
 
 export default function InvoicesPage() {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [page, setPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [form, setForm] = useState({
     customerName: '', customerEmail: '', customerPhone: '', customerAddress: '',
@@ -70,7 +79,7 @@ export default function InvoicesPage() {
     onError: (e: any) => toast.error(e.message || 'Failed to send invoice'),
   });
 
-  const invoices = useMemo(() => {
+  const allInvoices = useMemo(() => {
     const raw = (data?.data as any)?.invoices || (data as any)?.invoices || data?.data || [];
     if (!search) return raw;
     return raw.filter((i: any) =>
@@ -79,6 +88,9 @@ export default function InvoicesPage() {
       i.customerEmail?.toLowerCase().includes(search.toLowerCase())
     );
   }, [data, search]);
+
+  const totalPages = Math.max(1, Math.ceil(allInvoices.length / PAGE_SIZE));
+  const invoices = allInvoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const resetForm = () => {
     setForm({ customerName: '', customerEmail: '', customerPhone: '', customerAddress: '', invoiceDate: new Date().toISOString().split('T')[0], dueDate: '', paymentMethod: 'TRANSFER', notes: '', terms: '', vatRate: '0', discountType: 'amount', discountValue: '0' });
@@ -102,6 +114,7 @@ export default function InvoicesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (createMut.isPending) return;
     const validItems = items.filter(i => i.name);
     if (validItems.length === 0) { toast.error('Add at least one item'); return; }
     const invoiceNumber = (nextNumData?.data as any)?.invoiceNumber || `INV-${Date.now()}`;
@@ -113,13 +126,13 @@ export default function InvoicesPage() {
     });
   };
 
-  // Status summary counts
-  const allInvoices = (data?.data as any)?.invoices || (data as any)?.invoices || data?.data || [];
+  // Status summary counts (unfiltered)
+  const rawInvoices = (data?.data as any)?.invoices || (data as any)?.invoices || data?.data || [];
   const counts = {
-    total: allInvoices.length,
-    paid: allInvoices.filter((i: any) => i.status === 'PAID').length,
-    pending: allInvoices.filter((i: any) => ['PENDING', 'UNPAID'].includes(i.status)).length,
-    overdue: allInvoices.filter((i: any) => i.status === 'OVERDUE').length,
+    total: rawInvoices.length,
+    paid: rawInvoices.filter((i: any) => i.status === 'PAID').length,
+    pending: rawInvoices.filter((i: any) => ['PENDING', 'UNPAID'].includes(i.status)).length,
+    overdue: rawInvoices.filter((i: any) => i.status === 'OVERDUE').length,
   };
 
   return (
@@ -129,7 +142,7 @@ export default function InvoicesPage() {
         <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
           <div className="relative max-w-xs flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search invoices..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search invoices..." className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white" />
           </div>
         </div>
         <Link href="/dashboard/invoices/new" className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-all hover:shadow-md">
@@ -140,7 +153,7 @@ export default function InvoicesPage() {
       {/* Status Tabs */}
       <div className="flex gap-1 flex-wrap">
         {STATUSES.map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
+          <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? 'bg-[#050A30] text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
             {s === 'ALL' ? `All (${counts.total})` : s}
           </button>
@@ -180,6 +193,7 @@ export default function InvoicesPage() {
             </Link>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[580px]">
               <thead className="bg-gray-50/80 border-b border-gray-100">
@@ -241,6 +255,36 @@ export default function InvoicesPage() {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, allInvoices.length)} of {allInvoices.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <ChevronLeft size={14} />
+                </button>
+                {getPageNums(page, totalPages).map((n, i) =>
+                  n === '…' ? (
+                    <span key={`dot-${i}`} className="w-8 h-8 flex items-center justify-center text-gray-400 text-sm">…</span>
+                  ) : (
+                    <button key={n} onClick={() => setPage(Number(n))}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                        page === n ? 'bg-[#050A30] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}>
+                      {n}
+                    </button>
+                  )
+                )}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 

@@ -105,7 +105,7 @@ export const getSales = (params: { page?: number; limit?: number; startDate?: st
 };
 export const getSale = (id: string) => request(`/sales/${id}`);
 export const deleteSale = (id: string) => request(`/sales/${id}`, { method: 'DELETE' });
-export const createSale = (data: { amount: number; paymentMethod: 'CASH' | 'CARD' | 'TRANSFER'; items: any[] }) =>
+export const createSale = (data: any) =>
   request('/sales', { method: 'POST', body: JSON.stringify(data) });
 
 // Expenses

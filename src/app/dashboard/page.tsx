@@ -1,15 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { getDashboardHome, getSales, getExpenses, getBalanceSettings, getInvoices, getInventory } from '@/services/apiService';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Plus, Minus, Wallet, Building2, TrendingUp,
-  ShoppingCart, Receipt, FileText, Package, ChevronRight, Loader2,
+  ShoppingCart, Receipt, FileText, Package, ChevronRight, ChevronLeft,
   Search, X,
 } from 'lucide-react';
 
@@ -38,27 +37,95 @@ function HealthGauge({ score }: { score: number }) {
   );
 }
 
-function computeTodayProfit(allSales: any[], allInvoices: any[], allExpenses: any[]): number {
+function computeTodayProfit(
+  allSales: any[],
+  allInvoices: any[],
+  allExpenses: any[],
+  inventoryItems: any[] = [],
+): number {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const salesRevenue = allSales
-    .filter(s => new Date(s.createdAt || s.date || 0) >= todayStart)
-    .reduce((sum, s) => sum + (parseFloat(s.amount) || parseFloat(s.total) || 0), 0);
+  // Build inventory cost-price lookup (id, _id, and lowercase name) — mirrors mobile
+  const itemsLookup: Record<string, any> = {};
+  inventoryItems.forEach((i: any) => {
+    if (i.id) itemsLookup[i.id] = i;
+    if (i._id) itemsLookup[i._id] = i;
+    if (i.name) itemsLookup[String(i.name).toLowerCase().trim()] = i;
+  });
 
-  const invoiceRevenue = allInvoices
-    .filter(inv => {
-      const d = new Date(inv.createdAt || inv.invoiceDate || inv.date || 0);
-      const status = (inv.status || '').toUpperCase();
-      return d >= todayStart && status !== 'CANCELLED' && status !== 'DRAFT';
-    })
-    .reduce((sum, inv) => sum + (parseFloat(inv.grandTotal) || parseFloat(inv.total) || parseFloat(inv.amount) || 0), 0);
+  let todaysProfit = 0;
 
-  const expensesTotal = allExpenses
-    .filter(e => new Date(e.createdAt || e.date || 0) >= todayStart)
-    .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  // Sales: profit = selling price - COGS per item (mirrors mobile)
+  for (const sale of allSales) {
+    const saleDate = new Date(sale.date || sale.createdAt || 0);
+    if (saleDate < todayStart) continue;
 
-  return salesRevenue + invoiceRevenue - expensesTotal;
+    const saleItems: any[] = sale.items || [];
+    if (saleItems.length === 0) continue; // mobile skips if no item-level data
+
+    let costPriceTotal = 0;
+    let itemsTotalSales = 0;
+    saleItems.forEach((si: any) => {
+      const qty = parseFloat(si.quantity) || 1;
+      const lookupName = si.name ? String(si.name).toLowerCase().trim() : '';
+      const invMatch = itemsLookup[si.inventoryItemId] || itemsLookup[si.inventoryId] || itemsLookup[lookupName];
+      const scp = invMatch
+        ? (parseFloat(invMatch.costPrice) || parseFloat(invMatch.cost) || 0)
+        : (parseFloat(si.costPrice) || parseFloat(si.cost) || 0);
+      let sprice = parseFloat(si.unitPrice) || parseFloat(si.price) || 0;
+      if (sprice === 0 && si.amount) sprice = parseFloat(si.amount) / qty;
+      costPriceTotal += scp * qty;
+      itemsTotalSales += sprice * qty;
+    });
+    if (itemsTotalSales > 0) todaysProfit += itemsTotalSales - costPriceTotal;
+  }
+
+  // Invoices: effective revenue - COGS per item (mirrors mobile)
+  for (const inv of allInvoices) {
+    const invDate = new Date(inv.date || inv.createdAt || inv.invoiceDate || 0);
+    if (invDate < todayStart) continue;
+    const status = (inv.status || '').toUpperCase();
+    if (status === 'CANCELLED' || status === 'DRAFT') continue;
+
+    const invItems: any[] = inv.items || [];
+    const vatAmt = parseFloat(inv.vatAmount) || parseFloat(inv.vat) || 0;
+    const discountAmt = parseFloat(inv.discountAmount) || parseFloat(inv.discount) || 0;
+    const subTotalVal = parseFloat(inv.subTotal) || parseFloat(inv.subtotal) || 0;
+    const grandTotalVal = parseFloat(inv.grandTotal) || parseFloat(inv.total) || 0;
+
+    const totalCogs = invItems.reduce((sum: number, item: any) => {
+      const qty = parseFloat(item.quantity) || 1;
+      const lookupName = item.name ? String(item.name).toLowerCase().trim() : '';
+      const invMatch = itemsLookup[item.inventoryItemId] || itemsLookup[item.inventoryId] || itemsLookup[lookupName];
+      const cp = invMatch
+        ? (parseFloat(invMatch.costPrice) || parseFloat(invMatch.cost) || 0)
+        : (parseFloat(item.costPrice) || parseFloat(item.cost) || 0);
+      return sum + cp * qty;
+    }, 0);
+
+    let effectiveRevenue: number;
+    if (subTotalVal > 0) {
+      effectiveRevenue = subTotalVal - discountAmt;
+    } else if (grandTotalVal > 0) {
+      effectiveRevenue = grandTotalVal - vatAmt - discountAmt;
+    } else {
+      const itemsSum = invItems.reduce((s: number, i: any) =>
+        s + (parseFloat(i.quantity) || 1) * (parseFloat(i.unitPrice) || parseFloat(i.price) || 0), 0);
+      effectiveRevenue = itemsSum - discountAmt;
+    }
+
+    todaysProfit += effectiveRevenue - totalCogs;
+  }
+
+  // Expenses: subtract from profit
+  for (const e of allExpenses) {
+    const expDate = new Date(e.date || e.createdAt || 0);
+    if (expDate < todayStart) continue;
+    todaysProfit -= parseFloat(e.amount) || 0;
+  }
+
+  return todaysProfit;
 }
 
 function computeBalances(
@@ -96,10 +163,9 @@ const TYPE_CONFIG = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const router = useRouter();
-  const [displayLimit, setDisplayLimit] = useState(20);
-
   const [activitySearch, setActivitySearch] = useState('');
+  const [activityPage, setActivityPage] = useState(1);
+  const DASH_PAGE_SIZE = 10;
 
   const { data: homeData } = useQuery({
     queryKey: ['dashboard-home'],
@@ -130,11 +196,13 @@ export default function DashboardPage() {
   const allInvoices: any[] = (allInvData?.data as any)?.invoices || (allInvData as any)?.invoices || allInvData?.data || [];
   const allExpenses: any[] = (allExpData?.data as any)?.expenses || (allExpData as any)?.expenses || allExpData?.data || [];
 
-  // Today's profit: API value first (trust the backend), local fallback includes both sales + invoices
+  const inventoryForLookup: any[] = (recentStockData?.data as any)?.items || (recentStockData as any)?.items || recentStockData?.data || [];
+
+  // Today's profit: API value first (trust the backend), local fallback uses COGS like mobile
   const apiProfit = home?.todayProfit ?? home?.todayRevenue ?? home?.netProfit ?? home?.stats?.todayProfit;
   const todayProfit = typeof apiProfit === 'number'
     ? apiProfit
-    : computeTodayProfit(allSales, allInvoices, allExpenses);
+    : computeTodayProfit(allSales, allInvoices, allExpenses, inventoryForLookup);
 
   const { cashInHand, bankBalance } = computeBalances(allSales, allInvoices, allExpenses, startCash, startBank);
 
@@ -184,17 +252,26 @@ export default function DashboardPage() {
   ]
     .sort((a, b) => b._ts - a._ts);
 
-  const filteredRecent = activitySearch.trim()
-    ? recent.filter(item => {
-        const q = activitySearch.toLowerCase();
-        return (
-          item.label.toLowerCase().includes(q) ||
-          item.subLabel.toLowerCase().includes(q) ||
-          item._type.includes(q) ||
-          (item.paymentMethod || '').toLowerCase().includes(q)
-        );
-      })
-    : recent;
+  const filteredRecent = useMemo(() => {
+    if (!activitySearch.trim()) return recent;
+    const q = activitySearch.toLowerCase();
+    return recent.filter(item =>
+      item.label.toLowerCase().includes(q) ||
+      item.subLabel.toLowerCase().includes(q) ||
+      item._type.includes(q) ||
+      (item.paymentMethod || '').toLowerCase().includes(q)
+    );
+  }, [recent, activitySearch]);
+
+  const totalActivityPages = Math.max(1, Math.ceil(filteredRecent.length / DASH_PAGE_SIZE));
+  const pagedActivity = filteredRecent.slice((activityPage - 1) * DASH_PAGE_SIZE, activityPage * DASH_PAGE_SIZE);
+
+  const getPageNums = (cur: number, total: number): (number | '…')[] => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    if (cur <= 4) return [1, 2, 3, 4, 5, '…', total];
+    if (cur >= total - 3) return [1, '…', total - 4, total - 3, total - 2, total - 1, total];
+    return [1, '…', cur - 1, cur, cur + 1, '…', total];
+  };
 
   const today = new Date().toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -298,30 +375,37 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-2.5">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-              Recent Activity <span className="text-gray-300 font-normal normal-case">({filteredRecent.length}{activitySearch ? ` of ${recent.length}` : ''})</span>
+              Recent Activity
+              <span className="text-gray-300 font-normal normal-case ml-1">({filteredRecent.length})</span>
             </p>
+            <Link href="/dashboard/activity" className="text-xs font-semibold text-[#050A30] hover:underline flex items-center gap-1">
+              See all <ChevronRight size={12} />
+            </Link>
           </div>
+
           {/* Search */}
           <div className="relative mb-2">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={activitySearch}
-              onChange={e => { setActivitySearch(e.target.value); setDisplayLimit(20); }}
+              onChange={e => { setActivitySearch(e.target.value); setActivityPage(1); }}
               placeholder="Search activities…"
               className="w-full pl-8 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#050A30]/20 focus:border-[#050A30]/40"
             />
             {activitySearch && (
-              <button onClick={() => setActivitySearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setActivitySearch(''); setActivityPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X size={12} />
               </button>
             )}
           </div>
+
+          {/* Activity List */}
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
-            {filteredRecent.length === 0 ? (
+            {pagedActivity.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <p className="text-xs">No activities match &quot;{activitySearch}&quot;</p>
               </div>
-            ) : filteredRecent.slice(0, displayLimit).map((item) => {
+            ) : pagedActivity.map((item) => {
               const cfg = TYPE_CONFIG[item._type];
               const Icon = cfg.icon;
               const isClickable = item._type !== 'stock';
@@ -366,14 +450,42 @@ export default function DashboardPage() {
                 <div key={item._key}>{content}</div>
               );
             })}
-            {displayLimit < filteredRecent.length && (
-              <button
-                onClick={() => setDisplayLimit(l => l + 20)}
-                className="w-full flex items-center justify-center gap-2 py-3.5 text-xs font-semibold text-[#050A30] hover:bg-[#050A30]/5 transition-colors"
-              >
-                <Loader2 size={13} className="opacity-50" />
-                Load More · {filteredRecent.length - displayLimit} remaining
-              </button>
+
+            {/* Pagination */}
+            {totalActivityPages > 1 && (
+              <div className="flex items-center justify-center gap-1 px-4 py-3 border-t border-gray-100">
+                <button
+                  onClick={() => setActivityPage(p => Math.max(1, p - 1))}
+                  disabled={activityPage === 1}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                {getPageNums(activityPage, totalActivityPages).map((n, i) =>
+                  typeof n === 'number' ? (
+                    <button
+                      key={n}
+                      onClick={() => setActivityPage(n)}
+                      className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${
+                        activityPage === n
+                          ? 'bg-[#050A30] text-white'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ) : (
+                    <span key={`e${i}`} className="w-7 text-center text-xs text-gray-400 select-none">{n}</span>
+                  )
+                )}
+                <button
+                  onClick={() => setActivityPage(p => Math.min(totalActivityPages, p + 1))}
+                  disabled={activityPage === totalActivityPages}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
             )}
           </div>
         </div>
