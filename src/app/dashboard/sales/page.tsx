@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { getSales, createSale, getInventory } from '@/services/apiService';
+import { getSales, createSale, getInventory, adjustStock } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Plus, Search, Loader2, ShoppingCart, Trash2, CheckCircle2,
@@ -70,12 +70,27 @@ export default function SalesPage() {
 
   const createMutation = useMutation({
     mutationFn: createSale,
-    onSuccess: (res) => {
-      if (!res.success) return;
+    onSuccess: async (res) => {
+      if (!res.success) { toast.error(res.message || 'Failed to record sale'); return; }
+
+      // Reduce inventory stock for each linked item — mirrors mobile OfflineSyncEngine
+      for (const item of cart) {
+        if (item.id && !item.id.startsWith('custom-')) {
+          try {
+            await adjustStock(item.id, { quantityChange: -item.quantity, reason: 'sale' });
+          } catch {
+            // non-fatal: sale is already recorded
+          }
+        }
+      }
+
       qc.invalidateQueries({ queryKey: ['sales'] });
       qc.invalidateQueries({ queryKey: ['sales-all'] });
       qc.invalidateQueries({ queryKey: ['sales-recent'] });
       qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['inventory-recent'] });
+
       const saleData = (res.data as any)?.sale || res.data || res;
       setLastSale(saleData);
       setStep('success');
@@ -336,7 +351,16 @@ export default function SalesPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <button onClick={() => updateQty(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-sm font-bold transition-colors">-</button>
-                    <span className="text-xs font-bold w-5 text-center">{item.quantity}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={e => {
+                        const v = parseInt(e.target.value) || 1;
+                        updateQty(item.id, Math.max(1, v));
+                      }}
+                      className="w-12 text-center text-xs font-bold border border-gray-200 rounded py-0.5 focus:outline-none focus:ring-1 focus:ring-[#050A30]"
+                    />
                     <button onClick={() => updateQty(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded text-gray-700 text-sm font-bold transition-colors">+</button>
                     <button onClick={() => setCart(prev => prev.filter(i => i.id !== item.id))} className="ml-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"><Trash2 size={12} /></button>
                   </div>

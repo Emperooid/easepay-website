@@ -34,7 +34,7 @@ const navGroups = [
     label: 'Analytics',
     items: [
       { href: '/dashboard/reports', label: 'Reports', icon: BarChart3, exact: true },
-      { href: '/dashboard/reports', label: 'Business Health', icon: Activity, exact: false, neverActive: true },
+      { href: '/dashboard/business-health', label: 'Business Health', icon: Activity, exact: false },
       { href: '/dashboard/tax', label: 'Tax', icon: Calculator, exact: false },
     ],
   },

@@ -52,7 +52,7 @@ export default function InvoicesPage() {
   const createMut = useMutation({
     mutationFn: createInvoice,
     onSuccess: (res) => {
-      if (!res.success) return;
+      if (res && !res.success && res.message) { toast.error(res.message); return; }
       invalidateAll();
       setShowModal(false);
       resetForm();
@@ -207,7 +207,7 @@ export default function InvoicesPage() {
                 {invoices.map((inv: any) => {
                   const isOverdue = inv.dueDate && new Date(inv.dueDate) < new Date() && !['PAID', 'CANCELLED'].includes(inv.status);
                   return (
-                    <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors">
+                    <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors cursor-pointer" onClick={() => window.location.href = `/dashboard/transactions/invoice/${inv.id}`}>
                       <td className="px-3 py-2.5">
                         <span className="font-mono text-xs font-bold text-[#050A30] bg-[#050A30]/5 px-1.5 py-0.5 rounded">{inv.invoiceNumber}</span>
                       </td>
@@ -220,7 +220,7 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2.5">
                         <Badge variant={statusBadge(inv.status)}>{inv.status}</Badge>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                         <div className="relative flex items-center gap-0.5">
                           {inv.customerEmail && (
                             <button onClick={() => sendMut.mutate(inv.id)} title="Send"

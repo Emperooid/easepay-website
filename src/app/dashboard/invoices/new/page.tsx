@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createInvoice, getNextInvoiceNumber, getInventory } from '@/services/apiService';
+import { createInvoice, getNextInvoiceNumber, getInventory, adjustStock } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -18,6 +18,7 @@ interface InvoiceItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  inventoryItemId?: string;
 }
 
 export default function NewInvoicePage() {
@@ -47,9 +48,23 @@ export default function NewInvoicePage() {
 
   const createMut = useMutation({
     mutationFn: createInvoice,
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
+      if (res && !res.success && res.message) {
+        toast.error(res.message);
+        return;
+      }
+      // Reduce stock for inventory items
+      for (const item of items) {
+        if (item.inventoryItemId && item.quantity > 0) {
+          try {
+            await adjustStock(item.inventoryItemId, { quantityChange: -item.quantity, reason: 'invoice' });
+          } catch { /* non-fatal */ }
+        }
+      }
       qc.invalidateQueries({ queryKey: ['invoices'] });
-      setCreatedInvoice(res.data || res);
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+      setCreatedInvoice((res as any)?.data?.invoice || (res as any)?.data || res);
       setSuccess(true);
     },
     onError: (e: any) => toast.error(e.message || 'Failed to create invoice'),
@@ -64,8 +79,10 @@ export default function NewInvoicePage() {
 
   const pickProduct = (p: any) => {
     if (pickerIdx === null) return;
-    updateItem(pickerIdx, 'name', p.name);
-    updateItem(pickerIdx, 'unitPrice', p.unitPrice);
+    setItems(prev => prev.map((item, i) => i === pickerIdx
+      ? { ...item, name: p.name, unitPrice: p.unitPrice, inventoryItemId: p.id || p._id }
+      : item
+    ));
     setShowProductPicker(false);
     setPickerIdx(null);
     setProductSearch('');
@@ -302,7 +319,7 @@ export default function NewInvoicePage() {
               {/* VAT */}
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">VAT Rate (%)</label>
-                <input type="number" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} min="0" max="100" placeholder="0"
+                <input type="number" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} min="0" max="100" step="0.01" placeholder="0"
                   className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#050A30]" />
               </div>
 

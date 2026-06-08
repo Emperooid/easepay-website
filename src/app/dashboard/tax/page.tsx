@@ -38,17 +38,25 @@ export default function TaxPage() {
     queryFn: () => getMonthlyTax(undefined, selectedYear),
   });
 
-  const tax = (summaryData?.data as any) || (summaryData as any) || {};
-  const monthly = (monthlyData?.data as any)?.months || (monthlyData?.data as any)?.data || (monthlyData as any)?.months || [];
+  const taxRaw = (summaryData?.data as any) || (summaryData as any) || {};
+  // Normalise — some endpoints nest under 'summary', others are flat
+  const tax = taxRaw?.summary || taxRaw;
+  const monthly =
+    (monthlyData?.data as any)?.months ||
+    (monthlyData?.data as any)?.data ||
+    (monthlyData?.data as any)?.monthly ||
+    (monthlyData as any)?.months ||
+    (monthlyData as any)?.data ||
+    [];
 
-  const vatCollected = tax.vatCollected || tax.vat || 0;
-  const totalRevenue = tax.totalRevenue || tax.revenue || 0;
-  const totalExpenses = tax.totalExpenses || tax.expenses || 0;
-  const netProfit = tax.netProfit || tax.profit || totalRevenue - totalExpenses;
-  const taxableIncome = tax.taxableIncome || netProfit;
-  const estimatedTax = tax.estimatedTax || tax.taxDue || 0;
+  const vatCollected = tax.vatCollected || tax.vatAmount || tax.vat || 0;
+  const totalRevenue = tax.totalRevenue || tax.revenue || tax.totalSales || 0;
+  const totalExpenses = tax.totalExpenses || tax.expenses || tax.totalCosts || 0;
+  const netProfit = tax.netProfit || tax.profit || tax.net || (totalRevenue - totalExpenses);
+  const taxableIncome = tax.taxableIncome || tax.assessableIncome || netProfit;
+  const estimatedTax = tax.estimatedTax || tax.taxDue || tax.incomeTax || 0;
 
-  const entries = tax.entries || tax.transactions || [];
+  const entries = tax.entries || tax.transactions || tax.records || [];
   const visibleEntries = showAllEntries ? entries : entries.slice(0, 8);
 
   const exportCSV = () => {
@@ -107,7 +115,7 @@ export default function TaxPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-gray-300" size={24} /></div>
-      ) : totalRevenue === 0 && !tax.vatCollected ? (
+      ) : totalRevenue === 0 && vatCollected === 0 && estimatedTax === 0 ? (
         <div className="text-center py-10 text-gray-400">
           <Calculator size={32} className="mx-auto mb-2 opacity-30" />
           <p className="font-medium text-gray-500 text-sm">No tax data for {selectedQuarter ? `Q${selectedQuarter} ` : ''}{selectedYear}</p>

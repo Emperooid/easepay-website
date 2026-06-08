@@ -285,7 +285,7 @@ export default function ExpensesPage() {
                 const catInfo = CATEGORIES.find(c => c.name === exp.category);
                 const Icon = catInfo?.icon || HelpCircle;
                 return (
-                  <div key={exp.id || exp._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/80 transition-colors group">
+                  <div key={exp.id || exp._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => window.location.href = `/dashboard/transactions/expense/${exp.id || exp._id}`}>
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${catInfo?.color || 'bg-gray-100 text-gray-500'}`}>
                       <Icon size={16} />
                     </div>
@@ -296,7 +296,7 @@ export default function ExpensesPage() {
                     <div className="flex items-center gap-3 flex-shrink-0">
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{exp.paymentMethod || 'CASH'}</span>
                       <p className="text-sm font-bold text-red-600">-{formatCurrency(exp.amount)}</p>
-                      <button onClick={() => { if (confirm('Delete this expense?')) deleteMut.mutate(exp.id || exp._id); }}
+                      <button onClick={e => { e.stopPropagation(); if (confirm('Delete this expense?')) deleteMut.mutate(exp.id || exp._id); }}
                         className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
                         <Trash2 size={13} />
                       </button>

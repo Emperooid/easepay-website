@@ -14,11 +14,19 @@ import toast from 'react-hot-toast';
 type Tab = 'profit' | 'sales' | 'expenses';
 type Period = 'day' | 'week' | 'month';
 
+function defaultRange() {
+  const now = new Date();
+  const end = now.toISOString().split('T')[0];
+  const start = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]; // Jan 1 current year
+  return { start, end };
+}
+
 export default function ReportsPage() {
   const [tab, setTab] = useState<Tab>('profit');
   const [groupBy, setGroupBy] = useState<Period>('month');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const { start: defStart, end: defEnd } = defaultRange();
+  const [startDate, setStartDate] = useState(defStart);
+  const [endDate, setEndDate] = useState(defEnd);
 
   const params = { groupBy, startDate: startDate || undefined, endDate: endDate || undefined };
 
@@ -40,15 +48,28 @@ export default function ReportsPage() {
 
   const isLoading = (tab === 'sales' && salesLoading) || (tab === 'expenses' && expLoading) || (tab === 'profit' && plLoading);
 
-  const rawData = tab === 'sales' ? (salesData?.data || salesData) : tab === 'expenses' ? (expData?.data || expData) : (plData?.data || plData);
-  const chartData = (rawData as any)?.data || (rawData as any)?.chartData || (rawData as any)?.report || (Array.isArray(rawData) ? rawData : []);
-  const summary = (rawData as any)?.summary || {};
+  const rawData = tab === 'sales'
+    ? ((salesData?.data as any) || salesData)
+    : tab === 'expenses'
+    ? ((expData?.data as any) || expData)
+    : ((plData?.data as any) || plData);
 
-  const salesSummary = (salesData?.data as any)?.summary || (salesData as any)?.summary || {};
-  const expSummary = (expData?.data as any)?.summary || (expData as any)?.summary || {};
+  const chartData: any[] = (rawData as any)?.data
+    || (rawData as any)?.chartData
+    || (rawData as any)?.report
+    || (rawData as any)?.items
+    || (rawData as any)?.records
+    || (Array.isArray(rawData) ? rawData : []);
 
-  const totalRevenue = salesSummary.totalRevenue || salesSummary.revenue || 0;
-  const totalExpenses = expSummary.totalExpenses || expSummary.total || 0;
+  const summary = (rawData as any)?.summary || (rawData as any)?.totals || {};
+
+  const salesRaw = (salesData?.data as any) || salesData || {};
+  const expRaw   = (expData?.data as any) || expData || {};
+  const salesSummary = (salesRaw as any)?.summary || (salesRaw as any)?.totals || salesRaw || {};
+  const expSummary   = (expRaw as any)?.summary  || (expRaw as any)?.totals  || expRaw  || {};
+
+  const totalRevenue = salesSummary.totalRevenue || salesSummary.revenue || salesSummary.total || 0;
+  const totalExpenses = expSummary.totalExpenses || expSummary.expenses || expSummary.total || 0;
   const netProfit = totalRevenue - totalExpenses;
   const totalSalesCount = salesSummary.totalSales || salesSummary.count || 0;
 
@@ -119,8 +140,8 @@ export default function ReportsPage() {
             <span className="text-gray-300 text-sm">→</span>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
               className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#050A30]" />
-            {(startDate || endDate) && (
-              <button onClick={() => { setStartDate(''); setEndDate(''); }} className="text-xs text-gray-400 hover:text-gray-600 font-medium">Clear</button>
+            {(startDate !== defStart || endDate !== defEnd) && (
+              <button onClick={() => { setStartDate(defStart); setEndDate(defEnd); }} className="text-xs text-gray-400 hover:text-gray-600 font-medium">Reset</button>
             )}
           </div>
 
