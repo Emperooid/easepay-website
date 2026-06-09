@@ -276,7 +276,7 @@ export default function ReportsPage() {
           </ResponsiveContainer>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={displayChart} margin={{ left: -20 }}>
+            <BarChart data={displayChart as any[]} margin={{ left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
               <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
