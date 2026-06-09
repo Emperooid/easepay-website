@@ -40,10 +40,7 @@ async function request<T = any>(
   const data = await res.json();
 
   if (!res.ok) {
-    if (res.status === 403 && (data.code === 'TRIAL_EXPIRED' || data.code === 'SUBSCRIPTION_EXPIRED' || data.code === 'SUBSCRIPTION_REQUIRED')) {
-      subscriptionExpiredEvent.emit();
-      return { success: false, message: data.message, code: data.code, data: null as T };
-    }
+    // Subscription gate disabled on web — treat subscription 403s as regular errors
     return { success: false, message: data.message || `HTTP ${res.status}`, error: data.error, errors: data.errors, code: data.code };
   }
 
