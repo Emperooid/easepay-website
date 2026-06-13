@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createInvoice, getNextInvoiceNumber, getInventory, adjustStock } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
@@ -39,6 +39,24 @@ export default function NewInvoicePage() {
   const [pickerIdx, setPickerIdx] = useState<number | null>(null);
   const [success, setSuccess] = useState(false);
   const [createdInvoice, setCreatedInvoice] = useState<any>(null);
+
+  const allMethods = [['TRANSFER', 'Transfer', ArrowLeftRight], ['CASH', 'Cash', Banknote], ['POS', 'POS', CreditCard]];
+  const [enabledPaymentMethods, setEnabledPaymentMethods] = useState(allMethods);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('payment_methods_config');
+      if (stored) {
+        const cfg = JSON.parse(stored);
+        const keyMap: Record<string, string> = { TRANSFER: 'transfer', CASH: 'cash', POS: 'pos' };
+        const filtered = allMethods.filter(([val]) => cfg[keyMap[val as string]] !== false);
+        setEnabledPaymentMethods(filtered.length ? filtered : allMethods);
+        if (filtered.length && !filtered.find(([v]) => v === form.paymentMethod)) {
+          setForm(f => ({ ...f, paymentMethod: filtered[0][0] as string }));
+        }
+      }
+    } catch {}
+  }, []);
 
   const { data: nextNumData } = useQuery({ queryKey: ['next-invoice'], queryFn: getNextInvoiceNumber });
   const { data: inventoryData } = useQuery({ queryKey: ['inventory'], queryFn: () => getInventory({ limit: 200 }), enabled: showProductPicker });
@@ -278,7 +296,7 @@ export default function NewInvoicePage() {
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-2">Payment Method</label>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {[['TRANSFER', 'Transfer', ArrowLeftRight], ['CASH', 'Cash', Banknote], ['POS', 'POS', CreditCard]].map(([val, label, Icon]: any) => (
+                  {enabledPaymentMethods.map(([val, label, Icon]: any) => (
                     <button key={val} type="button" onClick={() => setForm(f => ({ ...f, paymentMethod: val }))}
                       className={`flex flex-col items-center gap-1 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${form.paymentMethod === val ? 'border-[#050A30] bg-[#050A30] text-white' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                       <Icon size={14} /> {label}

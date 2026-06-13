@@ -23,11 +23,22 @@ interface CartItem {
 
 type Step = 'list' | 'new' | 'success';
 
-const PAYMENT_METHODS = [
-  { value: 'CASH', label: 'Cash', icon: Banknote },
-  { value: 'TRANSFER', label: 'Transfer', icon: ArrowLeftRight },
-  { value: 'POS', label: 'POS/Card', icon: CreditCard },
+const ALL_PAYMENT_METHODS = [
+  { value: 'CASH',     label: 'Cash',     key: 'cash',     icon: Banknote },
+  { value: 'TRANSFER', label: 'Transfer', key: 'transfer', icon: ArrowLeftRight },
+  { value: 'POS',      label: 'POS/Card', key: 'pos',      icon: CreditCard },
 ];
+
+function getEnabledPaymentMethods() {
+  try {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('payment_methods_config') : null;
+    if (stored) {
+      const cfg = JSON.parse(stored);
+      return ALL_PAYMENT_METHODS.filter(m => cfg[m.key] !== false);
+    }
+  } catch {}
+  return ALL_PAYMENT_METHODS;
+}
 
 const PAGE_SIZE = 20;
 
@@ -43,7 +54,17 @@ export default function SalesPage() {
   const [step, setStep] = useState<Step>('list');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [enabledMethods, setEnabledMethods] = useState(ALL_PAYMENT_METHODS);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
+
+  // Load enabled payment methods from localStorage (same as mobile)
+  useEffect(() => {
+    const methods = getEnabledPaymentMethods();
+    setEnabledMethods(methods);
+    if (methods.length && !methods.find(m => m.value === paymentMethod)) {
+      setPaymentMethod(methods[0].value);
+    }
+  }, []);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -398,7 +419,7 @@ export default function SalesPage() {
               </div>
 
               <div className="grid grid-cols-3 gap-1">
-                {PAYMENT_METHODS.map(({ value, label, icon: Icon }) => (
+                {enabledMethods.map(({ value, label, icon: Icon }) => (
                   <button key={value} onClick={() => setPaymentMethod(value)}
                     className={`flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-semibold transition-all ${paymentMethod === value ? 'bg-[#050A30] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                     <Icon size={14} />
