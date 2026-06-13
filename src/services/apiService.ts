@@ -90,6 +90,8 @@ export const completeOnboarding = (data: any) =>
 
 // Dashboard
 export const getDashboardHome = () => request(`/dashboard/home?_t=${Date.now()}`);
+export const getCreditScore = () => request('/credit-score');
+export const getCreditScoreFactors = () => request('/credit-score/factors');
 export const getDashboardOverview = (timeframe: 'week' | 'month' | 'year' = 'month') =>
   request(`/dashboard/overview?timeframe=${timeframe}&_t=${Date.now()}`);
 export const getDashboardSalesAnalytics = () => request(`/dashboard/sales-analytics?_t=${Date.now()}`);

@@ -1,15 +1,36 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { getBusinessProfile, updateBusinessProfile, getCurrentUser, uploadImage } from '@/services/apiService';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getBusinessProfile, updateBusinessProfile, getCurrentUser } from '@/services/apiService';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2, CheckCircle, ChevronLeft, Upload, X } from 'lucide-react';
+import { Loader2, ChevronLeft, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
+function extractProfile(data: any) {
+  // Try every nesting shape the backend might return
+  const raw = data?.data || data;
+  return (raw as any)?.profile
+    || (raw as any)?.business
+    || (raw as any)?.businessProfile
+    || (raw as any)?.data
+    || raw
+    || {};
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string); // data:image/...;base64,...
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function BusinessProfilePage() {
   const { user, setUser } = useAuth();
+  const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     businessName: '', address: '', taxId: '', bn: '', rc: '', phoneNumber: '', logo: '',
@@ -20,49 +41,70 @@ export default function BusinessProfilePage() {
 
   const updateMut = useMutation({
     mutationFn: updateBusinessProfile,
-    onSuccess: async () => {
+    onSuccess: async (res) => {
+      // Extract the returned logoUrl if backend processed it via Cloudinary
+      const b = extractProfile(res);
+      const cloudinaryUrl = b.logoUrl || b.logo || b.logoURL;
+      if (cloudinaryUrl && cloudinaryUrl.startsWith('http')) {
+        setForm(f => ({ ...f, logo: cloudinaryUrl }));
+      }
+      qc.invalidateQueries({ queryKey: ['business'] });
       toast.success('Business profile saved!');
-      // Refresh user context so business name updates everywhere
       try {
-        const res = await getCurrentUser();
-        if (res.success && res.user) {
-          setUser(res.user);
-        }
+        const res2 = await getCurrentUser();
+        if (res2.success && res2.user) setUser(res2.user);
       } catch {}
     },
     onError: (e: any) => toast.error(e.message || 'Failed to save'),
   });
 
   useEffect(() => {
-    const raw = data?.data || data;
-    // backend may nest under profile, business, or businessProfile
-    const b = (raw as any)?.profile || (raw as any)?.business || (raw as any)?.businessProfile || raw;
+    if (!data) return;
+    const b = extractProfile(data);
     if (b && typeof b === 'object' && !Array.isArray(b)) {
       setForm({
         businessName: b.businessName || b.name || '',
         address: b.address || b.businessAddress || '',
-        taxId: b.taxId || b.tax_id || '',
-        bn: b.bn || b.businessNumber || '',
-        rc: b.rc || b.rcNumber || '',
+        taxId: b.taxId || b.tax_id || b.tinNumber || '',
+        bn: b.bn || b.bnNumber || b.businessNumber || '',
+        rc: b.rc || b.rcNumber || b.rc_number || '',
         phoneNumber: b.phoneNumber || b.phone || '',
-        logo: b.logo || b.logoUrl || b.logoURL || '',
+        logo: b.logoUrl || b.logo || b.logoURL || '',
       });
     }
   }, [data]);
 
+  // Same approach as mobile: convert to base64 and include in profile update payload
   const handleLogoUpload = async (file: File) => {
-    if (!file.type.startsWith('image/')) { toast.error('Upload an image file'); return; }
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
     setUploading(true);
     try {
-      const url = await uploadImage(file);
-      setForm(f => ({ ...f, logo: url }));
-      toast.success('Logo uploaded');
-    } catch { toast.error('Upload failed'); } finally { setUploading(false); }
+      const base64DataUri = await fileToBase64(file);
+      // Show preview immediately
+      setForm(f => ({ ...f, logo: base64DataUri }));
+      // Save to backend immediately (mobile does the same)
+      const res = await updateBusinessProfile({ logo: base64DataUri });
+      const b = extractProfile(res);
+      const cloudinaryUrl = b.logoUrl || b.logo || b.logoURL;
+      if (cloudinaryUrl && cloudinaryUrl.startsWith('http')) {
+        setForm(f => ({ ...f, logo: cloudinaryUrl }));
+      }
+      qc.invalidateQueries({ queryKey: ['business'] });
+      toast.success('Logo updated!');
+    } catch (e: any) {
+      toast.error(e.message || 'Logo upload failed');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMut.mutate(form);
+    // Don't resend base64 in the regular save — only send the URL or omit logo if it's base64
+    const payload: any = { ...form };
+    if (payload.logo?.startsWith('data:')) delete payload.logo; // already uploaded
+    updateMut.mutate(payload);
   };
 
   if (isLoading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={24} /></div>;

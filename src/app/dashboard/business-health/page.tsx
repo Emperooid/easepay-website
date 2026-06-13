@@ -1,10 +1,16 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getDashboardHome, getSalesReport, getExpensesReport } from '@/services/apiService';
+import {
+  getCreditScore, getCreditScoreFactors, getDashboardHome,
+  getSales, getInvoices, getExpenses,
+} from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
-import { Loader2, TrendingUp, TrendingDown, ShoppingCart, Receipt, Package, DollarSign, AlertTriangle, CheckCircle } from 'lucide-react';
-import { useState } from 'react';
+import {
+  Loader2, TrendingUp, TrendingDown, ShoppingCart, Receipt,
+  Package, DollarSign, AlertTriangle, CheckCircle, RefreshCw,
+} from 'lucide-react';
 
 function HealthGauge({ score }: { score: number }) {
   const size = 160;
@@ -25,7 +31,7 @@ function HealthGauge({ score }: { score: number }) {
             strokeLinecap="round" className="transition-all duration-700" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-bold text-gray-900">{score}%</span>
+          <span className="text-3xl font-bold text-gray-900">{Math.round(score)}</span>
           <span className="text-xs text-gray-400 font-medium">{label}</span>
         </div>
       </div>
@@ -35,97 +41,188 @@ function HealthGauge({ score }: { score: number }) {
 }
 
 export default function BusinessHealthPage() {
-  const { data: homeData, isLoading } = useQuery({
+  const [scoreData, setScoreData] = useState<any>(null);
+  const [localLoading, setLocalLoading] = useState(true);
+
+  // Try the dedicated credit-score endpoint first, same as mobile
+  const { data: creditData, isLoading: creditLoading } = useQuery({
+    queryKey: ['credit-score'],
+    queryFn: getCreditScore,
+    retry: false,
+  });
+  const { data: factorsData } = useQuery({
+    queryKey: ['credit-score-factors'],
+    queryFn: getCreditScoreFactors,
+    retry: false,
+  });
+  const { data: homeData } = useQuery({
     queryKey: ['dashboard-home'],
     queryFn: getDashboardHome,
   });
-
-  const now = new Date();
-  const startDate = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
-  const endDate = now.toISOString().split('T')[0];
-  const params = { groupBy: 'month', startDate, endDate };
-
-  const { data: salesReport } = useQuery({
-    queryKey: ['report-sales', params],
-    queryFn: () => getSalesReport(params),
+  const { data: salesData } = useQuery({
+    queryKey: ['bh-sales'],
+    queryFn: () => getSales({ limit: 200 }),
   });
-  const { data: expReport } = useQuery({
-    queryKey: ['report-exp', params],
-    queryFn: () => getExpensesReport(params),
+  const { data: invData } = useQuery({
+    queryKey: ['bh-invoices'],
+    queryFn: () => getInvoices({ limit: 200 }),
+  });
+  const { data: expData } = useQuery({
+    queryKey: ['bh-expenses'],
+    queryFn: () => getExpenses({ limit: 200 }),
   });
 
-  const home = (homeData?.data as any) || (homeData as any) || {};
-  const score = home.businessHealthScore || home.healthScore || home.score || 0;
+  // ── Compute score locally if backend doesn't return one (same as mobile) ──
+  useEffect(() => {
+    if (creditLoading) return;
 
-  const totalRevenue = home.totalRevenue || home.revenue || 0;
-  const totalExpenses = home.totalExpenses || home.expenses || 0;
-  const netProfit = home.netProfit || home.profit || totalRevenue - totalExpenses;
-  const totalSales = home.totalSales || home.salesCount || 0;
-  const inventoryValue = home.inventoryValue || home.stockValue || 0;
-  const outstandingInvoices = home.outstandingInvoices || home.pendingInvoices || 0;
+    const credit = (creditData?.data as any) || (creditData as any);
+    if (credit?.score !== undefined && credit?.metrics) {
+      setScoreData(credit);
+      setLocalLoading(false);
+      return;
+    }
 
-  const salesSummary = (salesReport?.data as any)?.summary || (salesReport as any)?.summary || {};
-  const expSummary = (expReport?.data as any)?.summary || (expReport as any)?.summary || {};
-  const growth = salesSummary.growth || 0;
+    // Local computation fallback
+    const allSales: any[] = (() => {
+      const r = (salesData?.data as any)?.sales || (salesData as any)?.sales || salesData?.data || [];
+      return Array.isArray(r) ? r : [];
+    })();
+    const allInvoices: any[] = (() => {
+      const r = (invData?.data as any)?.invoices || (invData as any)?.invoices || invData?.data || [];
+      return Array.isArray(r) ? r : [];
+    })();
+    const allExpenses: any[] = (() => {
+      const r = (expData?.data as any)?.expenses || (expData as any)?.expenses || expData?.data || [];
+      return Array.isArray(r) ? r : [];
+    })();
 
-  const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
+    // Revenue consistency (how many months have had sales in last 3 months)
+    const now = new Date();
+    let activeMonths = 0;
+    for (let i = 0; i < 3; i++) {
+      const m = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const hasSale = allSales.some(s => {
+        const d = new Date(s.createdAt || s.date || 0);
+        return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear();
+      }) || allInvoices.some(s => {
+        const d = new Date(s.invoiceDate || s.createdAt || 0);
+        return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear();
+      });
+      if (hasSale) activeMonths++;
+    }
+    const revConsistency = Math.round((activeMonths / 3) * 30);
+
+    // Payment history — % paid invoices
+    const paid = allInvoices.filter((i: any) => i.status === 'PAID').length;
+    const payHistory = allInvoices.length > 0
+      ? Math.round((paid / allInvoices.length) * 30)
+      : 10;
+
+    // Business age (based on oldest record)
+    const dates = [
+      ...allSales.map(s => new Date(s.createdAt || s.date || 0)),
+      ...allInvoices.map(i => new Date(i.invoiceDate || i.createdAt || 0)),
+    ].filter(d => !isNaN(d.getTime()));
+    const oldestDate = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : now;
+    const ageMonths = Math.max(0, (now.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const busAge = Math.min(20, Math.round(ageMonths * 2));
+
+    // Profile completeness (do we have a name/phone/address from homeData)
+    const home = (homeData?.data as any) || (homeData as any) || {};
+    const profFields = [home.businessName, home.phoneNumber, home.address].filter(Boolean).length;
+    const profCompleteness = Math.round((profFields / 3) * 20);
+
+    const totalScore = revConsistency + payHistory + busAge + profCompleteness;
+    setScoreData({
+      score: Math.min(100, totalScore),
+      metrics: {
+        revenueConsistency: (revConsistency / 30) * 100,
+        paymentHistory:     (payHistory / 30) * 100,
+        businessAge:        (busAge / 20) * 100,
+        profileCompleteness:(profCompleteness / 20) * 100,
+      },
+      _local: true,
+    });
+    setLocalLoading(false);
+  }, [creditData, creditLoading, salesData, invData, expData, homeData]);
+
+  const home   = (homeData?.data as any) || (homeData as any) || {};
+  const score  = scoreData?.score || 0;
+  const metrics = scoreData?.metrics || {};
+  const factors = (factorsData?.data as any)?.factors || (factorsData as any)?.factors || [];
+
+  const totalRevenue   = home.totalRevenue || home.revenue || 0;
+  const totalExpenses  = home.totalExpenses || home.expenses || 0;
+  const netProfit      = home.netProfit || home.profit || totalRevenue - totalExpenses;
+  const totalSales     = home.totalSales || home.salesCount || 0;
+  const outstandingInv = home.outstandingInvoices || home.pendingInvoices || 0;
+  const profitMargin   = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0';
 
   const insights = [
     netProfit >= 0
-      ? { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', text: `You're profitable with a ${profitMargin}% margin this year.` }
+      ? { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', text: `Your business is profitable with a ${profitMargin}% margin.` }
       : { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', text: `Expenses exceed revenue by ${formatCurrency(Math.abs(netProfit))}. Review your spending.` },
-    growth >= 0
-      ? { icon: TrendingUp, color: 'text-blue-600', bg: 'bg-blue-50', text: `Sales are up ${Math.abs(growth).toFixed(1)}% compared to last period.` }
-      : { icon: TrendingDown, color: 'text-orange-600', bg: 'bg-orange-50', text: `Sales are down ${Math.abs(growth).toFixed(1)}% — consider reviewing your pricing or promotions.` },
-    outstandingInvoices > 0
-      ? { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-50', text: `You have ${outstandingInvoices} outstanding invoice${outstandingInvoices > 1 ? 's' : ''}. Follow up to improve cash flow.` }
-      : { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', text: 'All invoices are settled. Great cash flow management!' },
-  ].filter(Boolean);
-
-  const metricCards = [
-    { label: 'Total Revenue', value: formatCurrency(totalRevenue), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'Total Expenses', value: formatCurrency(totalExpenses), icon: Receipt, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'Net Profit', value: formatCurrency(netProfit), icon: DollarSign, color: netProfit >= 0 ? 'text-blue-600' : 'text-red-600', bg: netProfit >= 0 ? 'bg-blue-50' : 'bg-red-50' },
-    { label: 'Total Sales', value: totalSales, icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Inventory Value', value: formatCurrency(inventoryValue), icon: Package, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Outstanding Invoices', value: outstandingInvoices, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
+    score >= 60
+      ? { icon: CheckCircle, color: 'text-blue-600', bg: 'bg-blue-50', text: `Your business health score is ${score >= 80 ? 'excellent' : 'strong'} at ${Math.round(score)}/100.` }
+      : { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', text: `Your health score of ${Math.round(score)}/100 needs improvement. Focus on consistent sales and paid invoices.` },
+    outstandingInv > 0
+      ? { icon: AlertTriangle, color: 'text-yellow-600', bg: 'bg-yellow-50', text: `You have ${outstandingInv} outstanding invoice${outstandingInv > 1 ? 's' : ''}. Follow up to improve cash flow.` }
+      : { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', text: 'All invoices are settled — great cash flow management!' },
   ];
 
-  if (isLoading) {
+  const metricCards = [
+    { label: 'Total Revenue',       value: formatCurrency(totalRevenue),  icon: TrendingUp,   color: 'text-green-600',  bg: 'bg-green-50'  },
+    { label: 'Total Expenses',      value: formatCurrency(totalExpenses), icon: Receipt,      color: 'text-red-600',    bg: 'bg-red-50'    },
+    { label: 'Net Profit',          value: formatCurrency(netProfit),     icon: DollarSign,   color: netProfit >= 0 ? 'text-blue-600' : 'text-red-600', bg: netProfit >= 0 ? 'bg-blue-50' : 'bg-red-50' },
+    { label: 'Total Sales',         value: totalSales,                    icon: ShoppingCart, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Outstanding Invoices',value: outstandingInv,                icon: AlertTriangle,color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'Profit Margin',       value: `${profitMargin}%`,            icon: TrendingUp,   color: netProfit >= 0 ? 'text-green-600' : 'text-red-600', bg: netProfit >= 0 ? 'bg-green-50' : 'bg-red-50' },
+  ];
+
+  const scoreMetrics = [
+    { label: 'Revenue Consistency', value: metrics.revenueConsistency || 0, color: '#22c55e' },
+    { label: 'Payment History',     value: metrics.paymentHistory     || 0, color: '#3b82f6' },
+    { label: 'Business Age',        value: metrics.businessAge        || 0, color: '#a855f7' },
+    { label: 'Profile Completeness',value: metrics.profileCompleteness|| 0, color: '#f59e0b' },
+  ];
+
+  if (localLoading || creditLoading) {
     return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={32} /></div>;
   }
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      <div>
-        <h1 className="text-lg font-bold text-gray-900">Business Health</h1>
-        <p className="text-sm text-gray-400 mt-0.5">An overview of your business performance and financial health.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900">Business Health</h1>
+          <p className="text-sm text-gray-400 mt-0.5">An overview of your business performance and financial health.</p>
+        </div>
+        {scoreData?._local && (
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Computed locally</span>
+        )}
       </div>
 
       {/* Score Card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col md:flex-row items-center gap-6">
         <HealthGauge score={score} />
-        <div className="flex-1 space-y-3">
+        <div className="flex-1 space-y-4">
           <div>
             <h2 className="text-base font-bold text-gray-900">Your Business Health Score</h2>
-            <p className="text-sm text-gray-400 mt-1">
-              Based on your revenue, expenses, profit margin, and outstanding invoices.
-            </p>
+            <p className="text-sm text-gray-400 mt-1">Based on revenue consistency, payment history, business age, and profile completeness.</p>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2.5">
-            <div
-              className="h-2.5 rounded-full transition-all duration-700"
-              style={{
-                width: `${score}%`,
-                backgroundColor: score >= 80 ? '#22c55e' : score >= 60 ? '#3b82f6' : score >= 40 ? '#f59e0b' : '#ef4444',
-              }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>0 — Critical</span>
-            <span>40 — Fair</span>
-            <span>60 — Strong</span>
-            <span>100 — Excellent</span>
+          {/* Score breakdown bars */}
+          <div className="space-y-2">
+            {scoreMetrics.map(m => (
+              <div key={m.label} className="flex items-center gap-3">
+                <span className="text-xs text-gray-500 w-36 flex-shrink-0">{m.label}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-2">
+                  <div className="h-2 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, m.value)}%`, backgroundColor: m.color }} />
+                </div>
+                <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.round(m.value)}%</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -148,7 +245,7 @@ export default function BusinessHealthPage() {
       {/* Insights */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-50">
-          <h3 className="text-sm font-bold text-gray-900">Insights & Recommendations</h3>
+          <h3 className="text-sm font-bold text-gray-900">Insights &amp; Recommendations</h3>
         </div>
         <div className="divide-y divide-gray-50">
           {insights.map((insight, i) => {
@@ -164,6 +261,25 @@ export default function BusinessHealthPage() {
           })}
         </div>
       </div>
+
+      {/* Backend factors if available */}
+      {factors.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50">
+            <h3 className="text-sm font-bold text-gray-900">Score Factors</h3>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {factors.map((f: any, i: number) => (
+              <div key={i} className="flex items-center justify-between px-5 py-3">
+                <span className="text-sm text-gray-700">{f.name || f.factor}</span>
+                <span className={`text-sm font-bold ${f.score >= 70 ? 'text-green-600' : f.score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                  {f.score}/100
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
