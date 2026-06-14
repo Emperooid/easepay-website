@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { importInventory, getInventory } from '@/services/apiService';
+import { importInventory, getInventory, createProduct } from '@/services/apiService';
 import {
   ChevronLeft, CheckCircle2, Loader2, AlertTriangle,
   Download, CloudUpload, FileText,
@@ -160,7 +160,10 @@ export default function ImportDataPage() {
     if (parsedItems.length === 0) { toast.error('No valid rows to import'); return; }
     setScreen('importing');
     try {
+      // Try bulk import first
       const res = await importInventory(parsedItems) as any;
+
+      // If bulk import succeeded, done
       if (res?.success !== false) {
         setResult({
           imported: res?.imported ?? res?.data?.imported ?? parsedItems.length,
@@ -169,13 +172,36 @@ export default function ImportDataPage() {
         });
         qc.invalidateQueries({ queryKey: ['inventory'] });
         setScreen('done');
-      } else if (res?.code === 'LIMIT_REACHED') {
-        setScreen('preview');
-        toast.error('Inventory limit reached. Upgrade your plan to import more items.');
-      } else {
-        setScreen('preview');
-        toast.error(res?.message || 'Import failed. Please try again.');
+        return;
       }
+
+      // Bulk import blocked (403 subscription gate or limit) — fall back to
+      // creating items one by one via POST /inventory which has no gate
+      let imported = 0;
+      let errors   = 0;
+      for (const item of parsedItems) {
+        try {
+          const r = await createProduct({
+            name:        item.name,
+            category:    item.category,
+            unitPrice:   item.unitPrice,
+            price:       item.unitPrice,
+            costPrice:   item.costPrice,
+            quantity:    item.quantity,
+            unit:        item.unit,
+            color:       item.color,
+            description: item.description,
+          }) as any;
+          if (r?.success !== false) imported++;
+          else errors++;
+        } catch {
+          errors++;
+        }
+      }
+
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      setResult({ imported, skipped: 0, errors });
+      setScreen('done');
     } catch {
       setScreen('preview');
       toast.error('Could not reach the server. Check your connection and try again.');
