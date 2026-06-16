@@ -99,18 +99,23 @@ export default function StockPage() {
 
   const closeModal = () => { setModal(null); setEditItem(null); };
 
-  const buildPayload = (isDraft: boolean) => ({
-    name: form.name,
-    category: form.category,
-    unitPrice: parseFloat(form.unitPrice) || 0,
-    costPrice: 0,
-    quantity: parseInt(form.quantity) || 0,
-    unit: form.kg || 'pcs',
-    description: form.description || undefined,
-    barcode: form.barcode || undefined,
-    lowStockThreshold: 5,
-    status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
-  });
+  const buildPayload = (isDraft: boolean) => {
+    const qty = parseInt(form.quantity) || 0;
+    return {
+      name: form.name,
+      category: form.category,
+      unitPrice: parseFloat(form.unitPrice) || 0,
+      price:     parseFloat(form.unitPrice) || 0,   // backend alias
+      costPrice: 0,
+      quantity:  qty,
+      stock:     qty,                                // backend compatibility alias (same as mobile)
+      unit: form.kg || 'pcs',
+      description: form.description || undefined,
+      barcode: form.barcode || undefined,
+      lowStockThreshold: 5,
+      status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
+    };
+  };
 
   const handleAdd = (isDraft: boolean) => {
     if (!form.name.trim()) { toast.error('Product name is required'); return; }

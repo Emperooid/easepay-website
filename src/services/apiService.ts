@@ -129,8 +129,16 @@ export const updateProduct = (id: string, data: any) => request(`/inventory/${id
 export const deleteProduct = (id: string) => request(`/inventory/${id}`, { method: 'DELETE' });
 export const adjustStock = (id: string, adjustment: { quantityChange: number; reason?: string; type?: string }) =>
   request(`/inventory/${id}/stock`, { method: 'PATCH', body: JSON.stringify(adjustment) });
-export const importInventory = (items: any[]) =>
-  request('/inventory/import', { method: 'POST', body: JSON.stringify({ items }) });
+export const importInventory = (items: any[]) => {
+  // Send both quantity + stock alias so backend stores the quantity regardless of which field it reads
+  const normalised = items.map(i => ({
+    ...i,
+    stock:    i.quantity,   // backend compatibility alias (same as mobile)
+    price:    i.unitPrice,  // backend alias for unitPrice
+    cost:     i.costPrice,  // backend alias for costPrice
+  }));
+  return request('/inventory/import', { method: 'POST', body: JSON.stringify({ items: normalised }) });
+};
 
 // Invoices
 export const getInvoices = (params: { status?: string; page?: number; limit?: number } = {}) => {

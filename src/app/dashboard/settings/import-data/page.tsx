@@ -171,12 +171,14 @@ export default function ImportDataPage() {
           errors:   res?.errors   ?? res?.data?.errors   ?? 0,
         });
         qc.invalidateQueries({ queryKey: ['inventory'] });
+        qc.invalidateQueries({ queryKey: ['inventory-summary'] });
         setScreen('done');
         return;
       }
 
       // Bulk import blocked (403 subscription gate or limit) — fall back to
-      // creating items one by one via POST /inventory which has no gate
+      // creating items one by one via POST /inventory which has no gate.
+      // Send both `quantity` AND `stock` (backend compatibility alias, same as mobile).
       let imported = 0;
       let errors   = 0;
       for (const item of parsedItems) {
@@ -185,12 +187,14 @@ export default function ImportDataPage() {
             name:        item.name,
             category:    item.category,
             unitPrice:   item.unitPrice,
-            price:       item.unitPrice,
+            price:       item.unitPrice,        // backend alias
             costPrice:   item.costPrice,
+            cost:        item.costPrice,        // backend alias
             quantity:    item.quantity,
-            unit:        item.unit,
-            color:       item.color,
-            description: item.description,
+            stock:       item.quantity,         // backend compatibility alias (same as mobile)
+            unit:        item.unit   || undefined,
+            color:       item.color  || undefined,
+            description: item.description || undefined,
           }) as any;
           if (r?.success !== false) imported++;
           else errors++;
