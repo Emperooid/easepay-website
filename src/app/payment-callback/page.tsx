@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { Suspense, useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { verifySubscriptionPayment } from '@/services/apiService';
@@ -8,7 +8,7 @@ import { useSubscription } from '@/context/SubscriptionContext';
 
 type State = 'verifying' | 'success' | 'failed';
 
-export default function PaymentCallbackPage() {
+function PaymentCallbackContent() {
   const router       = useRouter();
   const params       = useSearchParams();
   const { refresh }  = useSubscription();
@@ -120,5 +120,17 @@ export default function PaymentCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PaymentCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 size={48} className="text-[#050A30] animate-spin" />
+      </div>
+    }>
+      <PaymentCallbackContent />
+    </Suspense>
   );
 }
