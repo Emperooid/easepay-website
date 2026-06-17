@@ -206,14 +206,40 @@ export default function NewInvoicePage() {
     const validItems = items.filter(i => i.name && i.quantity > 0 && i.unitPrice >= 0);
     if (validItems.length === 0) { toast.error('Add at least one item'); return; }
     if (!form.customerName) { toast.error('Customer name is required'); return; }
-    const payload = {
-      ...form,
-      items: validItems.map(i => ({ name: i.name, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, total: i.quantity * i.unitPrice })),
-      subtotal, vatRate: parseFloat(form.vatRate), vatAmount,
-      discount: discountAmt, grandTotal,
-      paidAmount: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
-        ? parseFloat(form.partialAmountPaid) : undefined,
+
+    // Build payload explicitly — never spread form directly to avoid sending empty
+    // strings for optional fields (e.g. dueDate, customerEmail) that fail server validation
+    const isPartialPay = form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0;
+    const payload: Record<string, any> = {
+      customerName: form.customerName,
+      paymentMethod: form.paymentMethod,
+      status: form.status,
+      invoiceDate: form.invoiceDate,
+      vatRate: parseFloat(form.vatRate) || 0,
+      discountType: form.discountType,
+      items: validItems.map(i => ({
+        name: i.name,
+        description: i.description || undefined,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        total: i.quantity * i.unitPrice,
+      })),
+      subtotal,
+      vatAmount,
+      discount: discountAmt,
+      grandTotal,
     };
+
+    // Only include optional string fields when non-empty
+    if (form.customerEmail)   payload.customerEmail   = form.customerEmail;
+    if (form.customerPhone)   payload.customerPhone   = form.customerPhone;
+    if (form.customerAddress) payload.customerAddress = form.customerAddress;
+    if (form.dueDate)         payload.dueDate         = form.dueDate;
+    if (form.notes)           payload.notes           = form.notes;
+    if (form.terms)           payload.terms           = form.terms;
+    if (parseFloat(form.discountValue) > 0) payload.discountValue = parseFloat(form.discountValue);
+    if (isPartialPay)         payload.paidAmount      = parseFloat(form.partialAmountPaid);
+
     if (editId) {
       updateMut.mutate(payload);
     } else {
