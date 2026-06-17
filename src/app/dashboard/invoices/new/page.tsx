@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { openWhatsApp, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import { openWhatsApp, buildInvoiceWhatsAppMessage, openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -276,15 +276,16 @@ export default function NewInvoicePage() {
       notes: form.notes || undefined,
     };
 
-    // Extract business profile fields (mirrors mobile's loadBusinessInfoForPdf)
-    const biz = (bizProfileData as any)?.data?.business || (bizProfileData as any)?.data || (bizProfileData as any)?.business || bizProfileData || {};
-    const bizPhone = biz.phone || biz.businessPhone || (user as any)?.phone || '';
+    // Extract business profile — mobile uses: d.logoUrl || d.business?.logoUrl || d.business?.logo
+    const rawBizData = (bizProfileData as any)?.data || (bizProfileData as any) || {};
+    const biz = rawBizData?.business || rawBizData || {};
+    const bizPhone = biz.phoneNumber || biz.phone || biz.businessPhone || (user as any)?.phone || '';
     const bizAddress = biz.address || biz.businessAddress || '';
     const bizEmail = biz.email || biz.businessEmail || (user as any)?.email || '';
-    const bizLogo = biz.logo || biz.logoUrl || biz.businessLogo || null;
-    const bizRc = biz.rcNumber || biz.rc || '';
-    const bizBn = biz.bnNumber || biz.bn || '';
-    const bizTin = biz.taxId || biz.tin || biz.taxIdentificationNumber || '';
+    const bizLogo = rawBizData?.logoUrl || biz.logoUrl || biz.logo || biz.businessLogo || null;
+    const bizRc = biz.rcNumber || biz.rc || biz.rc_number || '';
+    const bizBn = biz.bnNumber || biz.bn || biz.bn_number || '';
+    const bizTin = biz.taxId || biz.tinNumber || biz.tin || biz.taxIdentificationNumber || '';
 
     const a4PrintData = {
       businessName,
@@ -326,41 +327,22 @@ export default function NewInvoicePage() {
     const handleA4Print = () => openInvoicePrintWindow(a4PrintData);
 
     const handleWhatsApp = async () => {
-      let pdfUrl: string | undefined;
-      if (invId) {
-        try {
-          const res = await getInvoiceDownloadLink(invId) as any;
-          pdfUrl = res?.url || res?.data?.url || res?.downloadUrl;
-        } catch {}
-      }
-
-      // Try Web Share API with PDF file first (works on mobile Chrome/Edge)
-      if (pdfUrl && typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
-        try {
-          const response = await fetch(pdfUrl);
-          const blob = await response.blob();
-          const file = new File([blob], `Invoice-${invNum}.pdf`, { type: 'application/pdf' });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              title: `Invoice ${invNum}`,
-              text: `Invoice from ${businessName}`,
-              files: [file],
-            });
-            return;
-          }
-        } catch {}
-      }
-
-      // Fallback: WhatsApp text with PDF link
-      const msg = buildInvoiceWhatsAppMessage({
+      const fallbackMsg = buildInvoiceWhatsAppMessage({
         businessName,
         customerName: form.customerName || undefined,
         amount: grandTotal,
-        invoiceUrl: pdfUrl || shareUrl || `${window.location.origin}/dashboard/invoices`,
+        invoiceUrl: shareUrl || `${window.location.origin}/dashboard/invoices`,
         invoiceNo: invNum,
         dueDate: form.dueDate || undefined,
       });
-      openWhatsApp(msg);
+      const t = toast.loading('Preparing PDF...');
+      try {
+        await shareInvoicePdfViaWhatsApp(a4PrintData, fallbackMsg, `Invoice-${invNum}.pdf`);
+        toast.dismiss(t);
+      } catch {
+        toast.dismiss(t);
+        openWhatsApp(fallbackMsg);
+      }
     };
 
     const handleEmail = async () => {
@@ -378,16 +360,15 @@ export default function NewInvoicePage() {
     };
 
     const handleDownloadPDF = async () => {
-      // Try server-generated PDF first, fall back to client-side print-to-PDF
-      if (invId) {
-        try {
-          const res = await getInvoiceDownloadLink(invId) as any;
-          const url = res?.url || res?.data?.url || res?.downloadUrl || res?.link;
-          if (url) { window.open(url, '_blank'); return; }
-        } catch {}
+      const t = toast.loading('Generating PDF...');
+      try {
+        await downloadInvoicePdf(a4PrintData, `Invoice-${invNum}.pdf`);
+        toast.success('PDF downloaded!', { id: t });
+      } catch {
+        toast.error('Could not generate PDF', { id: t });
+        // Last resort: open print window so user can Save as PDF
+        openInvoicePrintWindow(a4PrintData);
       }
-      // Client-side fallback: open print dialog (user can Save as PDF)
-      openInvoicePrintWindow(a4PrintData);
     };
 
     const handleCopyLink = () => {

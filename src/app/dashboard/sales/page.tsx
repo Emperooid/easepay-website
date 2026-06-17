@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, Share2, ExternalLink, Printer, Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { openWhatsApp, buildSaleWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import { openWhatsApp, buildSaleWhatsAppMessage, openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
 import { useAuth } from '@/context/AuthContext';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -263,38 +263,57 @@ export default function SalesPage() {
       receiptType: 'RECEIPT' as const,
     };
 
-    const handleA4Print = () => {
-      openInvoicePrintWindow({
-        businessName,
-        invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber,
-        date: new Date().toLocaleDateString('en-GB'),
-        customerName: customerName.trim() || undefined,
-        paymentMethod,
-        status: invoiceStatus,
-        items: cart.map(i => ({
-          name: i.name,
-          quantity: i.quantity,
-          unitPrice: i.price,
-          total: i.price * i.quantity,
-        })),
-        subtotal,
-        vatAmount: vatEnabled ? vat : 0,
-        discountAmount: discount > 0 ? discount : 0,
-        grandTotal: total,
-        type: 'SALE',
-      });
+    const saleInvNum = lastSale?.invoiceNumber || lastSale?.saleNumber;
+
+    const a4PrintData = {
+      businessName,
+      invoiceNo: saleInvNum,
+      date: new Date().toISOString(),
+      customerName: customerName.trim() || undefined,
+      paymentMethod,
+      status: invoiceStatus,
+      items: cart.map(i => ({
+        name: i.name,
+        quantity: i.quantity,
+        unitPrice: i.price,
+        total: i.price * i.quantity,
+      })),
+      subtotal,
+      vatAmount: vatEnabled ? vat : 0,
+      discountAmount: discount > 0 ? discount : 0,
+      grandTotal: total,
+      type: 'SALE' as const,
     };
 
-    const handleWhatsApp = () => {
-      const msg = buildSaleWhatsAppMessage({
+    const handleA4Print = () => openInvoicePrintWindow(a4PrintData);
+
+    const handleDownloadPdf = async () => {
+      const t = toast.loading('Generating PDF...');
+      try {
+        await downloadInvoicePdf(a4PrintData, `Receipt-${saleInvNum || Date.now()}.pdf`);
+        toast.success('PDF downloaded!', { id: t });
+      } catch {
+        toast.error('Could not generate PDF', { id: t });
+      }
+    };
+
+    const handleWhatsApp = async () => {
+      const fallbackMsg = buildSaleWhatsAppMessage({
         businessName,
         customerName: customerName.trim() || undefined,
         amount: total,
         receiptUrl: receiptUrl || undefined,
-        invoiceNo: lastSale?.invoiceNumber,
+        invoiceNo: saleInvNum,
         items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price })),
       });
-      openWhatsApp(msg);
+      const t = toast.loading('Preparing PDF...');
+      try {
+        await shareInvoicePdfViaWhatsApp(a4PrintData, fallbackMsg, `Receipt-${saleInvNum || Date.now()}.pdf`);
+        toast.dismiss(t);
+      } catch {
+        toast.dismiss(t);
+        openWhatsApp(fallbackMsg);
+      }
     };
 
     return (
@@ -344,7 +363,7 @@ export default function SalesPage() {
 
           {/* Secondary row: download PDF + copy link + view */}
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={handleA4Print}
+            <button onClick={handleDownloadPdf}
               className="flex items-center justify-center gap-1.5 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
               <Download size={14} /> PDF
             </button>

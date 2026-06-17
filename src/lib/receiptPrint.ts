@@ -270,7 +270,9 @@ function getStatusStyle(status: string): string {
   return 'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;';
 }
 
-export function openInvoicePrintWindow(data: InvoicePrintData): void {
+// ── Invoice HTML builder (shared by print window + PDF generation) ───────────
+
+function buildInvoicePageHtml(data: InvoicePrintData, autoprint = true): string {
   const {
     businessName, businessPhone, businessAddress, businessEmail,
     businessLogo, businessRcNumber, businessBnNumber, businessTaxId,
@@ -283,7 +285,8 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 
   const accent = '#050A30';
   const fmt = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const dateStr = date || new Date().toLocaleDateString('en-GB');
+  const dateStr = date ? new Date(date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+  const dueDateStr = dueDate ? new Date(dueDate).toLocaleDateString('en-GB') : '';
   const hasDiscount = discountAmount > 0;
   const hasVat = vatAmount > 0;
   const isPartial = !!(status?.toLowerCase().includes('partial') && amountPaid && amountPaid > 0);
@@ -295,7 +298,7 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
     : paymentMethod || 'N/A';
 
   const logoHtml = businessLogo
-    ? `<img src="${businessLogo}" alt="${businessName}" style="height:80px;max-width:200px;object-fit:contain;display:block;margin-bottom:8px;" />`
+    ? `<img src="${businessLogo}" crossorigin="anonymous" alt="${businessName}" style="height:80px;max-width:200px;object-fit:contain;display:block;margin-bottom:8px;" />`
     : `<div style="height:80px;max-width:200px;display:flex;align-items:center;margin-bottom:8px;">
         <span style="font-size:26px;font-weight:900;color:${accent};letter-spacing:1px;text-transform:uppercase;line-height:1.1;">${businessName}</span>
        </div>`;
@@ -312,37 +315,16 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 
   const itemsHtml = items.map((item, i) => `
     <tr style="background:${i % 2 === 0 ? '#ffffff' : '#F9FAFB'};border-bottom:1px solid #F3F4F6;">
-      <td style="padding:14px 16px;color:#111827;font-weight:500;font-size:13px;">
+      <td style="padding:14px 16px;color:#111827;font-weight:500;font-size:13px;width:100%;border-collapse:collapse;">
         ${item.name}
         ${item.description ? `<br/><span style="font-size:11px;color:#6B7280;">${item.description}</span>` : ''}
       </td>
-      <td style="padding:14px 12px;color:#4B5563;text-align:center;font-size:13px;">${item.quantity}</td>
-      <td style="padding:14px 12px;color:#4B5563;text-align:right;font-size:13px;">${fmt(item.unitPrice)}</td>
-      <td style="padding:14px 16px;color:#111827;text-align:right;font-weight:700;font-size:13px;">${fmt(item.total)}</td>
+      <td style="padding:14px 12px;color:#4B5563;text-align:center;font-size:13px;white-space:nowrap;">${item.quantity}</td>
+      <td style="padding:14px 12px;color:#4B5563;text-align:right;font-size:13px;white-space:nowrap;">${fmt(item.unitPrice)}</td>
+      <td style="padding:14px 16px;color:#111827;text-align:right;font-weight:700;font-size:13px;white-space:nowrap;">${fmt(item.total)}</td>
     </tr>`).join('');
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<title>${docLabel} #${invoiceNo || ''} — ${businessName}</title>
-<style>
-  @page { size: A4; margin: 16mm 18mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #111827; background: #fff; line-height: 1.6; }
-  table { width: 100%; border-collapse: collapse; }
-  @media screen {
-    body { background: #f3f4f6; }
-    .doc { max-width: 794px; margin: 24px auto; padding: 48px 56px; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,.12); border-radius: 8px; }
-  }
-  @media print {
-    .doc { padding: 0; }
-  }
-</style>
-</head>
-<body>
-<div class="doc">
-
+  const docBody = `
   <!-- HEADER -->
   <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:28px;border-bottom:3px solid ${accent};margin-bottom:36px;gap:24px;">
     <div style="flex:1;">
@@ -360,12 +342,12 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
       <div>
         <p style="font-size:12px;color:#6B7280;margin:4px 0;">No: <strong style="color:${accent};font-size:13px;">#${invoiceNo || '—'}</strong></p>
         <p style="font-size:12px;color:#6B7280;margin:4px 0;">Date: ${dateStr}</p>
-        ${dueDate ? `<p style="font-size:12px;color:#6B7280;margin:4px 0;">Due: ${dueDate}</p>` : ''}
+        ${dueDateStr ? `<p style="font-size:12px;color:#6B7280;margin:4px 0;">Due: ${dueDateStr}</p>` : ''}
         ${status ? `<p style="margin-top:10px;"><span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;${getStatusStyle(status)}">${status}</span></p>` : ''}
       </div>
       ${qrSrc ? `
       <div style="margin-top:12px;display:inline-block;text-align:center;">
-        <img src="${qrSrc}" style="width:80px;height:80px;display:block;border-radius:6px;" />
+        <img src="${qrSrc}" crossorigin="anonymous" style="width:80px;height:80px;display:block;border-radius:6px;" />
         <p style="margin:4px 0 0;font-size:9px;color:#9CA3AF;">Scan to view</p>
       </div>` : ''}
     </div>
@@ -388,13 +370,13 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 
   <!-- LINE ITEMS -->
   <div style="border-radius:10px;overflow:hidden;border:1px solid #E5E7EB;margin-bottom:32px;">
-    <table>
+    <table style="width:100%;border-collapse:collapse;">
       <thead>
         <tr style="background:${accent};">
           <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:left;">Description</th>
-          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:center;">Qty</th>
-          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:right;">Unit Price</th>
-          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:right;">Total</th>
+          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:center;white-space:nowrap;">Qty</th>
+          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:right;white-space:nowrap;">Unit Price</th>
+          <th style="color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.8px;padding:13px 16px;font-weight:700;text-align:right;white-space:nowrap;">Total</th>
         </tr>
       </thead>
       <tbody>${itemsHtml}</tbody>
@@ -426,19 +408,128 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
     </div>
     <p>This is a computer-generated ${(docLabel || 'invoice').toLowerCase()}. All transactions are final unless otherwise stated.</p>
     <span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:20px;padding:5px 14px;font-size:10px;font-weight:700;letter-spacing:0.5px;margin-top:12px;">&#10003;&nbsp; Verified &bull; Secured by EasePay</span>
-  </div>
+  </div>`;
 
-</div>
-<script>
-  window.onload = function() { setTimeout(function() { window.print(); }, 400); };
-</script>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>${docLabel} #${invoiceNo || ''} — ${businessName}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #111827; background: #fff; line-height: 1.6; }
+  @media screen { body { background: #f3f4f6; } .doc { max-width: 794px; margin: 24px auto; padding: 48px 56px; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,.12); border-radius: 8px; } }
+  @media print { .no-print { display:none; } }
+</style>
+</head>
+<body>
+<div class="doc">${docBody}</div>
+${autoprint ? '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>' : ''}
 </body>
 </html>`;
+}
 
-  const win = window.open('', '_blank', 'width=900,height=700,menubar=no,toolbar=no,location=no');
-  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
-  win.document.write(html);
-  win.document.close();
+// Opens invoice in a print-preview popup (Blob URL — avoids about:blank + popup-blocker after async)
+export function openInvoicePrintWindow(data: InvoicePrintData): void {
+  const html = buildInvoicePageHtml(data, true);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank', 'width=960,height=720,menubar=no,toolbar=no,location=no,scrollbars=yes');
+  if (!win) { alert('Please allow popups for this site to print.'); URL.revokeObjectURL(url); return; }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Generates a real PDF blob from the invoice using html2canvas + jsPDF (mirrors mobile Print.printToFileAsync)
+export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Blob> {
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+  ]);
+
+  const html = buildInvoicePageHtml(data, false);
+
+  // Render in a hidden off-screen container at A4-equivalent pixel width
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;z-index:-9999;font-family:Arial,sans-serif;font-size:13px;color:#111827;line-height:1.6;';
+  // Inject only the .doc content (strip full page wrapper to avoid CSS conflicts)
+  const bodyMatch = html.match(/<body>([\s\S]*?)<\/body>/i);
+  container.innerHTML = bodyMatch ? bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, '') : html;
+
+  // Apply doc styles inline so html2canvas picks them up
+  const docEl = container.querySelector('.doc') as HTMLElement | null;
+  if (docEl) {
+    docEl.style.cssText = 'padding:48px 56px;background:#fff;max-width:794px;';
+  }
+
+  document.body.appendChild(container);
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      width: 794,
+    });
+
+    const imgW = canvas.width / 2;   // px at 1x
+    const imgH = canvas.height / 2;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [imgW, imgH] });
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+    return pdf.output('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+// Downloads the invoice as a real PDF file (no print dialog — saves to Downloads folder)
+export async function downloadInvoicePdf(data: InvoicePrintData, filename?: string): Promise<void> {
+  const blob = await generateInvoicePdfBlob(data);
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), {
+    href: url,
+    download: filename || `Invoice-${data.invoiceNo || Date.now()}.pdf`,
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Shares invoice PDF via Web Share API (mobile browsers) or falls back to download + WhatsApp link
+export async function shareInvoicePdfViaWhatsApp(
+  data: InvoicePrintData,
+  fallbackMsg: string,
+  filename?: string,
+): Promise<void> {
+  const blob = await generateInvoicePdfBlob(data);
+  const pdfName = filename || `Invoice-${data.invoiceNo || Date.now()}.pdf`;
+  const file = new File([blob], pdfName, { type: 'application/pdf' });
+
+  // Mobile browsers (Chrome Android, Safari iOS) support file sharing
+  if (typeof navigator !== 'undefined' && 'share' in navigator) {
+    try {
+      const nav = navigator as any;
+      if (nav.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: pdfName });
+        return;
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') { /* fall through */ }
+      else return; // user cancelled
+    }
+  }
+
+  // Desktop fallback: download the PDF, then open WhatsApp with a text message
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: pdfName });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  // Small delay so the download starts before WhatsApp opens
+  setTimeout(() => openWhatsApp(fallbackMsg), 1200);
 }
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
