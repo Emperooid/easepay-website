@@ -1,6 +1,7 @@
-// Web equivalent of mobile's ThermalPrintModal + ESC/POS receipt generation.
-// Opens a styled receipt in a new browser window so users can print it on
-// any printer (USB thermal, network printer, or save as PDF).
+// Web receipt + invoice printing — mirrors mobile's pdfTemplate.ts + ThermalPrintModal logic.
+// openReceiptPrintWindow  → 80mm monospace receipt (unchanged, do not break)
+// openThermalPrintWindow  → 58mm / 80mm thermal HTML (port of mobile generateThermalReceiptHtml)
+// openInvoicePrintWindow  → A4 professional invoice (port of mobile generateProfessionalInvoiceHtml)
 
 export interface ReceiptItem {
   name: string;
@@ -30,14 +31,7 @@ function formatN(n: number): string {
   return `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function pad(left: string, right: string, width = 32): string {
-  const gap = Math.max(1, width - left.length - right.length);
-  return left + ' '.repeat(gap) + right;
-}
-
-function line(char = '-', width = 32): string {
-  return char.repeat(width);
-}
+// ── 80mm Monospace Receipt (unchanged) ───────────────────────────────────────
 
 export function openReceiptPrintWindow(data: ReceiptData): void {
   const {
@@ -48,7 +42,6 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
   } = data;
 
   const dateStr = date || new Date().toLocaleDateString('en-GB');
-  const w = 32; // character width for the receipt
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -74,7 +67,6 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
   .sep-solid { border-top: 1px solid #000; margin: 4px 0; }
   .row     { display: flex; justify-content: space-between; }
   .item-name { flex: 1; word-break: break-word; }
-  .item-total { white-space: nowrap; margin-left: 8px; }
   .total-row { display: flex; justify-content: space-between; padding: 1px 0; }
   .grand-total { font-weight: bold; font-size: 13px; }
   .footer  { text-align: center; margin-top: 8px; font-size: 10px; }
@@ -92,22 +84,16 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
 </head>
 <body>
 <div class="receipt-wrap">
-
   <div class="center bold large">${businessName}</div>
   ${businessAddress ? `<div class="center">${businessAddress}</div>` : ''}
   ${businessPhone  ? `<div class="center">${businessPhone}</div>` : ''}
-
   <div class="sep-solid"></div>
-
   <div class="center bold">${receiptType === 'INVOICE' ? 'INVOICE' : receiptType === 'EXPENSE' ? 'EXPENSE' : 'RECEIPT'}</div>
   ${invoiceNo ? `<div class="center">Ref: ${invoiceNo}</div>` : ''}
   <div class="center">${dateStr}</div>
-
   ${customerName ? `<div class="sep"></div><div>Customer: <span class="bold">${customerName}</span></div>` : ''}
   ${paymentMethod ? `<div>Payment: ${paymentMethod}</div>` : ''}
-
   <div class="sep-solid"></div>
-
   ${items.map(item => `
     <div>
       <div class="item-name bold">${item.name}</div>
@@ -117,96 +103,190 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
       </div>
     </div>
   `).join('')}
-
   <div class="sep-solid"></div>
-
   <div class="total-row"><span>Subtotal</span><span>${formatN(subtotal)}</span></div>
   ${discountAmount > 0 ? `<div class="total-row"><span>Discount</span><span>-${formatN(discountAmount)}</span></div>` : ''}
   ${vatAmount > 0     ? `<div class="total-row"><span>VAT</span><span>${formatN(vatAmount)}</span></div>` : ''}
-
   <div class="sep"></div>
   <div class="total-row grand-total"><span>TOTAL</span><span>${formatN(grandTotal)}</span></div>
   <div class="sep-solid"></div>
-
   ${notes ? `<div style="margin-top:4px;font-size:10px;">${notes}</div><div class="sep"></div>` : ''}
-
-  <div class="footer">
-    Thank you for your business!<br/>
-    Powered by EasePay
-  </div>
+  <div class="footer">Thank you for your business!<br/>Powered by EasePay</div>
 </div>
 <script>
-  window.onload = function() {
-    // Small delay so fonts render before print dialog opens
-    setTimeout(function() { window.print(); }, 300);
-  };
+  window.onload = function() { setTimeout(function() { window.print(); }, 300); };
 </script>
 </body>
 </html>`;
 
   const win = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no');
-  if (!win) {
-    alert('Please allow popups for this site to use the print feature.');
-    return;
-  }
+  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
   win.document.write(html);
   win.document.close();
 }
 
-// ── A4 / Professional Invoice Print ─────────────────────────────────────────
+// ── Thermal Receipt (58mm / 80mm) — port of mobile generateThermalReceiptHtml ──
+
+export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 80): void {
+  const {
+    businessName, businessAddress, businessPhone,
+    invoiceNo, date, customerName, paymentMethod,
+    items, subtotal, vatAmount = 0, discountAmount = 0, grandTotal,
+    receiptType = 'RECEIPT', notes,
+  } = data;
+
+  const pw = paperWidth === 80 ? '80mm' : '58mm';
+  const dateStr = date || new Date().toLocaleDateString('en-GB');
+  const typeLabel = receiptType === 'INVOICE' ? 'INVOICE' : receiptType === 'EXPENSE' ? 'EXPENSE' : 'RECEIPT';
+
+  const itemsHtml = items.map(item => `
+    <tr>
+      <td class="col-item">${item.name}<br/><small>${item.quantity} x N${item.unitPrice.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</small></td>
+      <td class="col-total">N${item.total.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <style>
+    @page { margin: 0; size: ${pw} auto; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      width: ${pw};
+      padding: 2mm;
+      margin: 0;
+      color: #000;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-bold { font-weight: bold; }
+    .title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+    .subtitle { font-size: 10px; margin-bottom: 2px; }
+    .separator { border-top: 1px dashed #000; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 2px 0; vertical-align: top; }
+    .col-item { width: 70%; }
+    .col-total { width: 30%; text-align: right; }
+    @media screen {
+      body { background: #f5f5f5; }
+      .wrap { background: #fff; margin: 20px auto; padding: 8px; width: ${pw}; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="text-center">
+    <div class="title">${businessName}</div>
+    ${businessAddress ? `<div class="subtitle">${businessAddress}</div>` : ''}
+    ${businessPhone   ? `<div class="subtitle">${businessPhone}</div>` : ''}
+  </div>
+  <div class="separator"></div>
+  <div>
+    <div>${typeLabel} #: ${invoiceNo || 'N/A'}</div>
+    <div>DATE: ${dateStr}</div>
+    <div>CUST: ${customerName || 'Walk-in'}</div>
+    ${paymentMethod ? `<div>PAY: ${paymentMethod}</div>` : ''}
+  </div>
+  <div class="separator"></div>
+  <table>${itemsHtml}</table>
+  <div class="separator"></div>
+  <table>
+    <tr><td>Subtotal</td><td class="text-right">N${subtotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>
+    ${vatAmount > 0      ? `<tr><td>VAT (7.5%)</td><td class="text-right">N${vatAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>` : ''}
+    ${discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">-N${discountAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>` : ''}
+    ${paymentMethod      ? `<tr><td>Payment</td><td class="text-right">${paymentMethod}</td></tr>` : ''}
+    <tr><td class="text-bold">TOTAL</td><td class="text-bold text-right">N${grandTotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>
+  </table>
+  ${notes ? `<div class="separator"></div><div class="subtitle">${notes}</div>` : ''}
+  <div class="separator"></div>
+  <div class="text-center subtitle" style="margin-top:10px;">Thanks for your business!</div>
+  <br/><br/><br/>
+</div>
+<script>
+  window.onload = function() { setTimeout(function() { window.print(); }, 300); };
+</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', `width=${paperWidth === 58 ? 320 : 420},height=600,menubar=no,toolbar=no,location=no`);
+  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+// ── A4 Professional Invoice — port of mobile generateProfessionalInvoiceHtml ──
 
 export interface InvoicePrintData {
+  // Business
   businessName: string;
   businessPhone?: string;
   businessAddress?: string;
+  businessEmail?: string;
+  businessLogo?: string;
+  businessRcNumber?: string;
+  businessBnNumber?: string;
+  businessTaxId?: string;
+  // Invoice meta
   invoiceNo?: string;
   date?: string;
   dueDate?: string;
+  publicToken?: string;
+  // Customer
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
   customerAddress?: string;
+  // Payment
   paymentMethod?: string;
   status?: string;
+  // Line items
   items: { name: string; description?: string; quantity: number; unitPrice: number; total: number }[];
+  // Totals
   subtotal: number;
   vatAmount?: number;
   discountAmount?: number;
   grandTotal: number;
   amountPaid?: number;
+  // Footer
   notes?: string;
   terms?: string;
+  accountDetails?: string;
+  // Type
   type?: 'INVOICE' | 'RECEIPT' | 'SALE' | 'EXPENSE';
 }
 
-function a4StatusStyle(status: string): string {
-  const s = status?.toUpperCase();
-  if (s === 'PAID') return 'background:#DCFCE7;color:#15803D;';
-  if (s === 'OVERDUE') return 'background:#FEE2E2;color:#DC2626;';
-  if (s === 'DRAFT') return 'background:#F3F4F6;color:#6B7280;';
-  if (s === 'SENT') return 'background:#DBEAFE;color:#1D4ED8;';
-  if (s.includes('PARTIAL')) return 'background:#FEF3C7;color:#D97706;';
-  if (s === 'CANCELLED') return 'background:#F3F4F6;color:#6B7280;';
-  return 'background:#FEF9C3;color:#854D0E;';
+function getStatusStyle(status: string): string {
+  const s = (status || '').toLowerCase();
+  if (s === 'paid')          return 'background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;';
+  if (s === 'unpaid')        return 'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;';
+  if (s.includes('partial')) return 'background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;';
+  if (s === 'draft')         return 'background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;';
+  if (s === 'overdue')       return 'background:#FEE2E2;color:#DC2626;border:1px solid #FCA5A5;';
+  if (s === 'sent')          return 'background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD;';
+  return 'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;';
 }
 
 export function openInvoicePrintWindow(data: InvoicePrintData): void {
   const {
-    businessName, businessPhone, businessAddress,
-    invoiceNo, date, dueDate,
+    businessName, businessPhone, businessAddress, businessEmail,
+    businessLogo, businessRcNumber, businessBnNumber, businessTaxId,
+    invoiceNo, date, dueDate, publicToken,
     customerName, customerEmail, customerPhone, customerAddress,
     paymentMethod, status, items, subtotal,
     vatAmount = 0, discountAmount = 0, grandTotal, amountPaid,
-    notes, terms, type = 'INVOICE',
+    notes, terms, accountDetails, type = 'INVOICE',
   } = data;
 
   const accent = '#050A30';
-  const fmt = (n: number) =>
-    `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmt = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const dateStr = date || new Date().toLocaleDateString('en-GB');
   const hasDiscount = discountAmount > 0;
   const hasVat = vatAmount > 0;
-  const isPartial = !!status?.toLowerCase().includes('partial') && !!amountPaid && amountPaid > 0;
+  const isPartial = !!(status?.toLowerCase().includes('partial') && amountPaid && amountPaid > 0);
   const balanceDue = isPartial ? Math.max(0, grandTotal - amountPaid!) : 0;
   const docLabel = type === 'SALE' ? 'RECEIPT' : type;
   const pmLabel = paymentMethod === 'CASH' ? 'Cash'
@@ -214,30 +294,49 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
     : paymentMethod === 'POS' ? 'POS / Card'
     : paymentMethod || 'N/A';
 
+  const logoHtml = businessLogo
+    ? `<img src="${businessLogo}" alt="${businessName}" style="height:80px;max-width:200px;object-fit:contain;display:block;margin-bottom:8px;" />`
+    : `<div style="height:80px;max-width:200px;display:flex;align-items:center;margin-bottom:8px;">
+        <span style="font-size:26px;font-weight:900;color:${accent};letter-spacing:1px;text-transform:uppercase;line-height:1.1;">${businessName}</span>
+       </div>`;
+
+  const regBadges = [
+    businessRcNumber ? `<span style="font-size:11px;color:#6B7280;background:#F3F4F6;border-radius:4px;padding:2px 8px;font-weight:600;">RC: ${businessRcNumber}</span>` : '',
+    businessBnNumber ? `<span style="font-size:11px;color:#6B7280;background:#F3F4F6;border-radius:4px;padding:2px 8px;font-weight:600;">BN: ${businessBnNumber}</span>` : '',
+    businessTaxId    ? `<span style="font-size:11px;color:#6B7280;background:#F3F4F6;border-radius:4px;padding:2px 8px;font-weight:600;">TIN: ${businessTaxId}</span>` : '',
+  ].filter(Boolean).join('');
+
+  const qrSrc = publicToken
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://easepay-backend.onrender.com/i/' + publicToken)}`
+    : '';
+
   const itemsHtml = items.map((item, i) => `
-    <tr style="background:${i % 2 === 0 ? '#fff' : '#F9FAFB'};">
-      <td style="padding:12px 16px;font-size:13px;color:#111827;border-bottom:1px solid #F3F4F6;">
-        <strong>${item.name}</strong>
-        ${item.description ? `<br/><span style="color:#6B7280;font-size:11px;">${item.description}</span>` : ''}
+    <tr style="background:${i % 2 === 0 ? '#ffffff' : '#F9FAFB'};border-bottom:1px solid #F3F4F6;">
+      <td style="padding:14px 16px;color:#111827;font-weight:500;font-size:13px;">
+        ${item.name}
+        ${item.description ? `<br/><span style="font-size:11px;color:#6B7280;">${item.description}</span>` : ''}
       </td>
-      <td style="padding:12px 16px;text-align:center;font-size:13px;color:#374151;border-bottom:1px solid #F3F4F6;">${item.quantity}</td>
-      <td style="padding:12px 16px;text-align:right;font-size:13px;color:#374151;border-bottom:1px solid #F3F4F6;">${fmt(item.unitPrice)}</td>
-      <td style="padding:12px 16px;text-align:right;font-size:13px;font-weight:700;color:#111827;border-bottom:1px solid #F3F4F6;">${fmt(item.total)}</td>
+      <td style="padding:14px 12px;color:#4B5563;text-align:center;font-size:13px;">${item.quantity}</td>
+      <td style="padding:14px 12px;color:#4B5563;text-align:right;font-size:13px;">${fmt(item.unitPrice)}</td>
+      <td style="padding:14px 16px;color:#111827;text-align:right;font-weight:700;font-size:13px;">${fmt(item.total)}</td>
     </tr>`).join('');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>${docLabel} - ${businessName}</title>
+<title>${docLabel} #${invoiceNo || ''} — ${businessName}</title>
 <style>
   @page { size: A4; margin: 16mm 18mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #374151; background: #fff; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #111827; background: #fff; line-height: 1.6; }
   table { width: 100%; border-collapse: collapse; }
   @media screen {
     body { background: #f3f4f6; }
-    .doc { max-width: 794px; margin: 24px auto; padding: 40px 48px; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,.12); border-radius: 8px; }
+    .doc { max-width: 794px; margin: 24px auto; padding: 48px 56px; background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,.12); border-radius: 8px; }
+  }
+  @media print {
+    .doc { padding: 0; }
   }
 </style>
 </head>
@@ -245,28 +344,40 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 <div class="doc">
 
   <!-- HEADER -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:24px;border-bottom:3px solid ${accent};margin-bottom:32px;gap:20px;">
-    <div>
-      <div style="font-size:20px;font-weight:800;color:#111827;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${businessName}</div>
-      ${businessPhone ? `<div style="font-size:12px;color:#6B7280;margin-top:3px;">&#9742; ${businessPhone}</div>` : ''}
-      ${businessAddress ? `<div style="font-size:12px;color:#6B7280;margin-top:3px;">&#9679; ${businessAddress}</div>` : ''}
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:28px;border-bottom:3px solid ${accent};margin-bottom:36px;gap:24px;">
+    <div style="flex:1;">
+      ${logoHtml}
+      ${businessLogo ? `<p style="font-size:15px;font-weight:800;color:#111827;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">${businessName}</p>` : ''}
+      ${regBadges ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">${regBadges}</div>` : ''}
+      <div>
+        ${businessEmail   ? `<p style="font-size:12px;color:#4B5563;margin:2px 0;">&#9993;&nbsp; ${businessEmail}</p>` : ''}
+        ${businessPhone   ? `<p style="font-size:12px;color:#4B5563;margin:2px 0;">&#9742;&nbsp; ${businessPhone}</p>` : ''}
+        ${businessAddress ? `<p style="font-size:12px;color:#4B5563;margin:2px 0;">&#9679;&nbsp; ${businessAddress}</p>` : ''}
+      </div>
     </div>
-    <div style="text-align:right;min-width:200px;">
-      <div style="font-size:36px;font-weight:900;color:#111827;letter-spacing:3px;text-transform:uppercase;line-height:1;margin-bottom:12px;">${docLabel}</div>
-      <div style="font-size:12px;color:#6B7280;margin-top:4px;">No: <strong style="color:${accent};font-size:13px;">#${invoiceNo || '—'}</strong></div>
-      <div style="font-size:12px;color:#6B7280;margin-top:4px;">Date: ${dateStr}</div>
-      ${dueDate ? `<div style="font-size:12px;color:#6B7280;margin-top:4px;">Due: ${dueDate}</div>` : ''}
-      ${status ? `<div style="margin-top:10px;"><span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;${a4StatusStyle(status)}">${status}</span></div>` : ''}
+    <div style="text-align:right;min-width:220px;">
+      <p style="font-size:40px;font-weight:900;color:#111827;letter-spacing:3px;text-transform:uppercase;line-height:1;margin-bottom:12px;">${docLabel}</p>
+      <div>
+        <p style="font-size:12px;color:#6B7280;margin:4px 0;">No: <strong style="color:${accent};font-size:13px;">#${invoiceNo || '—'}</strong></p>
+        <p style="font-size:12px;color:#6B7280;margin:4px 0;">Date: ${dateStr}</p>
+        ${dueDate ? `<p style="font-size:12px;color:#6B7280;margin:4px 0;">Due: ${dueDate}</p>` : ''}
+        ${status ? `<p style="margin-top:10px;"><span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;${getStatusStyle(status)}">${status}</span></p>` : ''}
+      </div>
+      ${qrSrc ? `
+      <div style="margin-top:12px;display:inline-block;text-align:center;">
+        <img src="${qrSrc}" style="width:80px;height:80px;display:block;border-radius:6px;" />
+        <p style="margin:4px 0 0;font-size:9px;color:#9CA3AF;">Scan to view</p>
+      </div>` : ''}
     </div>
   </div>
 
   <!-- BILL TO / PAYMENT -->
-  <div style="display:flex;justify-content:space-between;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:28px;gap:20px;flex-wrap:wrap;">
+  <div style="display:flex;justify-content:space-between;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;margin-bottom:32px;gap:20px;flex-wrap:wrap;">
     <div>
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#9CA3AF;margin-bottom:6px;font-weight:700;">Billed To</div>
       <div style="font-size:15px;font-weight:700;color:#111827;">${customerName || 'Walk-in Customer'}</div>
-      ${customerEmail ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${customerEmail}</div>` : ''}
-      ${customerPhone ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${customerPhone}</div>` : ''}
+      ${customerEmail   ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${customerEmail}</div>` : ''}
+      ${customerPhone   ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${customerPhone}</div>` : ''}
       ${customerAddress ? `<div style="font-size:12px;color:#6B7280;margin-top:2px;">${customerAddress}</div>` : ''}
     </div>
     <div style="text-align:right;">
@@ -276,7 +387,7 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
   </div>
 
   <!-- LINE ITEMS -->
-  <div style="border-radius:10px;overflow:hidden;border:1px solid #E5E7EB;margin-bottom:28px;">
+  <div style="border-radius:10px;overflow:hidden;border:1px solid #E5E7EB;margin-bottom:32px;">
     <table>
       <thead>
         <tr style="background:${accent};">
@@ -291,12 +402,12 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
   </div>
 
   <!-- SUMMARY -->
-  <div style="display:flex;justify-content:flex-end;margin-bottom:36px;">
-    <div style="width:340px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:40px;">
+    <div style="width:360px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:20px 24px;">
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#4B5563;"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
       ${hasDiscount ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#4B5563;"><span>Discount</span><span style="color:#DC2626;">-${fmt(discountAmount)}</span></div>` : ''}
-      ${hasVat ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#4B5563;"><span>VAT</span><span style="color:#059669;">+${fmt(vatAmount)}</span></div>` : ''}
-      <div style="display:flex;justify-content:space-between;padding-top:14px;margin-top:10px;border-top:2px solid #E5E7EB;font-size:18px;font-weight:800;color:${accent};"><span>Grand Total</span><span>${fmt(grandTotal)}</span></div>
+      ${hasVat      ? `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#4B5563;"><span>VAT (7.5%)</span><span style="color:#059669;">+${fmt(vatAmount)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;border-top:2px solid #E5E7EB;margin-top:10px;padding-top:14px;font-size:18px;font-weight:800;color:${accent};"><span>Grand Total</span><span>${fmt(grandTotal)}</span></div>
       ${isPartial ? `
       <div style="margin-top:14px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:12px 16px;">
         <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span style="font-weight:600;color:#374151;">Amount Paid</span><span style="font-weight:700;color:#059669;">${fmt(amountPaid!)}</span></div>
@@ -306,10 +417,14 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
   </div>
 
   <!-- FOOTER -->
-  <div style="border-top:1px solid #E5E7EB;padding-top:20px;font-size:11px;color:#6B7280;">
-    ${notes ? `<div style="margin-bottom:14px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Notes</strong>${notes}</div>` : ''}
-    ${terms ? `<div style="margin-bottom:14px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Terms &amp; Conditions</strong>${terms}</div>` : ''}
-    <p>This is a computer-generated ${docLabel.toLowerCase()}. All transactions are final unless otherwise stated.</p>
+  <div style="border-top:1px solid #E5E7EB;padding-top:24px;font-size:11px;color:#6B7280;">
+    ${accountDetails ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Bank / Account Details</strong>${accountDetails.replace(/\n/g,'<br/>')}</div>` : ''}
+    ${terms ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Terms &amp; Conditions</strong>${terms.replace(/\n/g,'<br/>')}</div>` : ''}
+    <div style="margin-bottom:14px;">
+      <strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Note</strong>
+      ${notes || 'Thank you for your business. Please make payment by the due date.'}
+    </div>
+    <p>This is a computer-generated ${(docLabel || 'invoice').toLowerCase()}. All transactions are final unless otherwise stated.</p>
     <span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:20px;padding:5px 14px;font-size:10px;font-weight:700;letter-spacing:0.5px;margin-top:12px;">&#10003;&nbsp; Verified &bull; Secured by EasePay</span>
   </div>
 
@@ -321,15 +436,12 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 </html>`;
 
   const win = window.open('', '_blank', 'width=900,height=700,menubar=no,toolbar=no,location=no');
-  if (!win) {
-    alert('Please allow popups for this site to use the print feature.');
-    return;
-  }
+  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
   win.document.write(html);
   win.document.close();
 }
 
-// ── WhatsApp ─────────────────────────────────────────────────────────────────
+// ── WhatsApp ──────────────────────────────────────────────────────────────────
 
 export function buildWhatsAppUrl(message: string): string {
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -337,14 +449,9 @@ export function buildWhatsAppUrl(message: string): string {
 
 export function openWhatsApp(message: string): void {
   const url = buildWhatsAppUrl(message);
-  // Use a programmatic link click — avoids popup blockers that block window.open
   const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 export function buildSaleWhatsAppMessage(opts: {

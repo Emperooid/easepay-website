@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
-const STATUSES = ['ALL', 'PAID', 'PENDING', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'];
+const STATUSES = ['ALL', 'PAID', 'PENDING', 'PARTIAL', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'];
 const PAGE_SIZE = 20;
 
 function getPageNums(cur: number, total: number): (number | '…')[] {
@@ -136,6 +136,7 @@ export default function InvoicesPage() {
     paid: rawInvoices.filter((i: any) => i.status === 'PAID').length,
     pending: rawInvoices.filter((i: any) => ['PENDING', 'UNPAID'].includes(i.status)).length,
     overdue: rawInvoices.filter((i: any) => i.status === 'OVERDUE').length,
+    partial: rawInvoices.filter((i: any) => (i.status || '').toLowerCase().includes('partial')).length,
   };
 
   if (!isOwner && !can('manage_invoices')) {

@@ -1,8 +1,14 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createInvoice, getNextInvoiceNumber, getInventory, adjustStock } from '@/services/apiService';
+import {
+  createInvoice, updateInvoice, getNextInvoiceNumber,
+  getInventory, adjustStock, getInvoice,
+  getInvoiceDownloadLink, sendInvoice, getBusinessProfile,
+} from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -14,7 +20,6 @@ import {
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { openWhatsApp, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
-import { getInvoiceDownloadLink, sendInvoice } from '@/services/apiService';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -36,6 +41,28 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const qc = useQueryClient();
 
+  const [editId, setEditId] = useState<string | null>(null);
+
+  // Read editId from URL without useSearchParams (avoids Suspense requirement)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('editId');
+    setEditId(id || null);
+  }, []);
+
+  // Business profile for rich PDF generation
+  const { data: bizProfileData } = useQuery({
+    queryKey: ['business-profile-pdf'],
+    queryFn: getBusinessProfile,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Fetch invoice for edit mode
+  const { data: editInvoiceData } = useQuery({
+    queryKey: ['invoice-edit', editId],
+    queryFn: () => getInvoice(editId!),
+    enabled: !!editId,
+  });
+
   const [form, setForm] = useState({
     customerName: '', customerEmail: '', customerPhone: '', customerAddress: '',
     invoiceDate: new Date().toISOString().split('T')[0], dueDate: '',
@@ -53,6 +80,39 @@ export default function NewInvoicePage() {
 
   const allMethods = [['TRANSFER', 'Transfer', ArrowLeftRight], ['CASH', 'Cash', Banknote], ['POS', 'POS', CreditCard]];
   const [enabledPaymentMethods, setEnabledPaymentMethods] = useState(allMethods);
+
+  // Populate form when editing
+  useEffect(() => {
+    if (!editInvoiceData) return;
+    const inv = (editInvoiceData as any)?.data?.invoice || (editInvoiceData as any)?.data || (editInvoiceData as any)?.invoice || editInvoiceData;
+    if (!inv?.customerName && !inv?.invoiceNumber) return;
+    setForm({
+      customerName: inv.customerName || '',
+      customerEmail: inv.customerEmail || '',
+      customerPhone: inv.customerPhone || '',
+      customerAddress: inv.customerAddress || '',
+      invoiceDate: inv.invoiceDate ? inv.invoiceDate.split('T')[0] : new Date().toISOString().split('T')[0],
+      dueDate: inv.dueDate ? inv.dueDate.split('T')[0] : '',
+      paymentMethod: inv.paymentMethod || 'TRANSFER',
+      notes: inv.notes || '',
+      terms: inv.terms || '',
+      vatRate: String(inv.vatRate || '0'),
+      discountType: (inv.discountType as 'amount' | 'percent') || 'amount',
+      discountValue: String(inv.discount || inv.discountAmount || '0'),
+      status: inv.status || 'Draft',
+      partialAmountPaid: String(inv.paidAmount || inv.amountPaid || ''),
+    });
+    const rawItems = inv.items || inv.invoiceItems || [];
+    if (rawItems.length > 0) {
+      setItems(rawItems.map((i: any) => ({
+        name: i.name || i.productName || '',
+        description: i.description || '',
+        quantity: Number(i.quantity || 1),
+        unitPrice: Number(i.unitPrice || i.price || 0),
+        inventoryItemId: i.inventoryItemId || i.productId || undefined,
+      })));
+    }
+  }, [editInvoiceData]);
 
   useEffect(() => {
     try {
@@ -85,16 +145,10 @@ export default function NewInvoicePage() {
   const createMut = useMutation({
     mutationFn: createInvoice,
     onSuccess: async (res) => {
-      if (res && !res.success && res.message) {
-        toast.error(res.message);
-        return;
-      }
-      // Reduce stock for inventory items
+      if (res && !res.success && res.message) { toast.error(res.message); return; }
       for (const item of items) {
         if (item.inventoryItemId && item.quantity > 0) {
-          try {
-            await adjustStock(item.inventoryItemId, { quantityChange: -item.quantity, reason: 'invoice' });
-          } catch { /* non-fatal */ }
+          try { await adjustStock(item.inventoryItemId, { quantityChange: -item.quantity, reason: 'invoice' }); } catch {}
         }
       }
       qc.invalidateQueries({ queryKey: ['invoices'] });
@@ -104,6 +158,21 @@ export default function NewInvoicePage() {
       setSuccess(true);
     },
     onError: (e: any) => toast.error(e.message || 'Failed to create invoice'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (payload: any) => updateInvoice(editId!, payload),
+    onSuccess: (res) => {
+      if (res && !res.success && res.message) { toast.error(res.message); return; }
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      qc.invalidateQueries({ queryKey: ['invoice-edit', editId] });
+      qc.invalidateQueries({ queryKey: ['dashboard-home'] });
+      const inv = (res as any)?.data?.invoice || (res as any)?.data || res;
+      setCreatedInvoice(inv);
+      setSuccess(true);
+      toast.success('Invoice updated!');
+    },
+    onError: (e: any) => toast.error(e.message || 'Failed to update invoice'),
   });
 
   const updateItem = (idx: number, field: keyof InvoiceItem, value: any) => {
@@ -130,21 +199,27 @@ export default function NewInvoicePage() {
   const vatAmount = afterDiscount * (parseFloat(form.vatRate || '0') / 100);
   const grandTotal = afterDiscount + vatAmount;
 
+  const isSaving = createMut.isPending || updateMut.isPending;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const validItems = items.filter(i => i.name && i.quantity > 0 && i.unitPrice >= 0);
     if (validItems.length === 0) { toast.error('Add at least one item'); return; }
     if (!form.customerName) { toast.error('Customer name is required'); return; }
-    const invoiceNumber = (nextNumData?.data as any)?.invoiceNumber || `INV-${Date.now()}`;
-    createMut.mutate({
+    const payload = {
       ...form,
-      invoiceNumber,
       items: validItems.map(i => ({ name: i.name, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, total: i.quantity * i.unitPrice })),
       subtotal, vatRate: parseFloat(form.vatRate), vatAmount,
       discount: discountAmt, grandTotal,
       paidAmount: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
         ? parseFloat(form.partialAmountPaid) : undefined,
-    });
+    };
+    if (editId) {
+      updateMut.mutate(payload);
+    } else {
+      const invoiceNumber = (nextNumData?.data as any)?.invoiceNumber || `INV-${Date.now()}`;
+      createMut.mutate({ ...payload, invoiceNumber });
+    }
   };
 
   const invoiceNumber = (nextNumData?.data as any)?.invoiceNumber || '—';
@@ -176,36 +251,54 @@ export default function NewInvoicePage() {
       notes: form.notes || undefined,
     };
 
-    const handleA4Print = () => {
-      openInvoicePrintWindow({
-        businessName,
-        invoiceNo: invNum,
-        date: form.invoiceDate,
-        dueDate: form.dueDate || undefined,
-        customerName: form.customerName || undefined,
-        customerEmail: form.customerEmail || undefined,
-        customerPhone: form.customerPhone || undefined,
-        customerAddress: form.customerAddress || undefined,
-        paymentMethod: form.paymentMethod,
-        status: form.status,
-        items: items.filter(i => i.name && i.unitPrice >= 0).map(i => ({
-          name: i.name,
-          description: i.description || undefined,
-          quantity: i.quantity,
-          unitPrice: i.unitPrice,
-          total: i.quantity * i.unitPrice,
-        })),
-        subtotal,
-        vatAmount,
-        discountAmount: discountAmt > 0 ? discountAmt : 0,
-        grandTotal,
-        amountPaid: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
-          ? parseFloat(form.partialAmountPaid) : undefined,
-        notes: form.notes || undefined,
-        terms: form.terms || undefined,
-        type: 'INVOICE',
-      });
+    // Extract business profile fields (mirrors mobile's loadBusinessInfoForPdf)
+    const biz = (bizProfileData as any)?.data?.business || (bizProfileData as any)?.data || (bizProfileData as any)?.business || bizProfileData || {};
+    const bizPhone = biz.phone || biz.businessPhone || (user as any)?.phone || '';
+    const bizAddress = biz.address || biz.businessAddress || '';
+    const bizEmail = biz.email || biz.businessEmail || (user as any)?.email || '';
+    const bizLogo = biz.logo || biz.logoUrl || biz.businessLogo || null;
+    const bizRc = biz.rcNumber || biz.rc || '';
+    const bizBn = biz.bnNumber || biz.bn || '';
+    const bizTin = biz.taxId || biz.tin || biz.taxIdentificationNumber || '';
+
+    const a4PrintData = {
+      businessName,
+      businessPhone: bizPhone || undefined,
+      businessAddress: bizAddress || undefined,
+      businessEmail: bizEmail || undefined,
+      businessLogo: bizLogo || undefined,
+      businessRcNumber: bizRc || undefined,
+      businessBnNumber: bizBn || undefined,
+      businessTaxId: bizTin || undefined,
+      invoiceNo: invNum,
+      date: form.invoiceDate,
+      dueDate: form.dueDate || undefined,
+      publicToken: publicToken || undefined,
+      customerName: form.customerName || undefined,
+      customerEmail: form.customerEmail || undefined,
+      customerPhone: form.customerPhone || undefined,
+      customerAddress: form.customerAddress || undefined,
+      paymentMethod: form.paymentMethod,
+      status: form.status,
+      items: items.filter(i => i.name && i.unitPrice >= 0).map(i => ({
+        name: i.name,
+        description: i.description || undefined,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        total: i.quantity * i.unitPrice,
+      })),
+      subtotal,
+      vatAmount,
+      discountAmount: discountAmt > 0 ? discountAmt : 0,
+      grandTotal,
+      amountPaid: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
+        ? parseFloat(form.partialAmountPaid) : undefined,
+      notes: form.notes || undefined,
+      terms: form.terms || undefined,
+      type: 'INVOICE' as const,
     };
+
+    const handleA4Print = () => openInvoicePrintWindow(a4PrintData);
 
     const handleWhatsApp = async () => {
       let pdfUrl: string | undefined;
@@ -260,13 +353,16 @@ export default function NewInvoicePage() {
     };
 
     const handleDownloadPDF = async () => {
-      if (!invId) { toast.error('Invoice not ready'); return; }
-      try {
-        const res = await getInvoiceDownloadLink(invId) as any;
-        const url = res?.url || res?.data?.url || res?.downloadUrl;
-        if (url) window.open(url, '_blank');
-        else toast.error('PDF not available yet');
-      } catch { toast.error('Could not get PDF link'); }
+      // Try server-generated PDF first, fall back to client-side print-to-PDF
+      if (invId) {
+        try {
+          const res = await getInvoiceDownloadLink(invId) as any;
+          const url = res?.url || res?.data?.url || res?.downloadUrl || res?.link;
+          if (url) { window.open(url, '_blank'); return; }
+        } catch {}
+      }
+      // Client-side fallback: open print dialog (user can Save as PDF)
+      openInvoicePrintWindow(a4PrintData);
     };
 
     const handleCopyLink = () => {
@@ -420,7 +516,7 @@ export default function NewInvoicePage() {
           <ChevronLeft size={18} className="text-gray-600" />
         </Link>
         <div>
-          <h1 className="text-base font-bold text-gray-900">Create Invoice</h1>
+          <h1 className="text-base font-bold text-gray-900">{editId ? 'Edit Invoice' : 'Create Invoice'}</h1>
           <p className="text-xs text-gray-400">Invoice # <span className="font-mono font-semibold text-[#050A30]">{invoiceNumber}</span></p>
         </div>
       </div>
@@ -627,9 +723,9 @@ export default function NewInvoicePage() {
                 <div className="flex justify-between text-sm font-bold text-gray-900 pt-2 border-t border-gray-100"><span>Grand Total</span><span>{formatCurrency(grandTotal)}</span></div>
               </div>
 
-              <button type="submit" disabled={createMut.isPending}
+              <button type="submit" disabled={isSaving}
                 className="w-full py-3 bg-[#050A30] text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#0a1460] transition-colors shadow-sm mt-2">
-                {createMut.isPending ? <><Loader2 size={15} className="animate-spin" /> Creating...</> : 'Create Invoice'}
+                {isSaving ? <><Loader2 size={15} className="animate-spin" /> {editId ? 'Saving...' : 'Creating...'}</> : editId ? 'Save Changes' : 'Create Invoice'}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Printer, Bluetooth, RefreshCw, Loader2, CheckCircle2, AlertCircle, Wifi } from 'lucide-react';
-import { openReceiptPrintWindow } from '@/lib/receiptPrint';
+import { openThermalPrintWindow } from '@/lib/receiptPrint';
 
 export interface ThermalReceiptData {
   businessName: string;
@@ -267,7 +267,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
 
   const handleFallback = () => {
     onClose();
-    openReceiptPrintWindow(receiptData);
+    openThermalPrintWindow(receiptData, paperSize === '58mm' ? 58 : 80);
   };
 
   if (!visible) return null;
