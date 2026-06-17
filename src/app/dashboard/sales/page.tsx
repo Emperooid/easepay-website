@@ -8,10 +8,10 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Plus, Search, Loader2, ShoppingCart, Trash2, CheckCircle2,
   Banknote, CreditCard, ArrowLeftRight, X, Package,
-  ChevronLeft, ChevronRight, Share2, ExternalLink, Printer,
+  ChevronLeft, ChevronRight, Share2, ExternalLink, Printer, Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { openReceiptPrintWindow, buildWhatsAppUrl, buildSaleWhatsAppMessage } from '@/lib/receiptPrint';
+import { openReceiptPrintWindow, openWhatsApp, buildSaleWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -78,6 +78,7 @@ export default function SalesPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [invoiceStatus, setInvoiceStatus] = useState('Unpaid');
   const [vatEnabled, setVatEnabled] = useState(false);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState('');
@@ -198,6 +199,7 @@ export default function SalesPage() {
     createMutation.mutate({
       customerName: customerName.trim() || 'Walk-in Customer',
       paymentMethod,
+      status: invoiceStatus,
       amount: total,
       grandTotal: total,
       total,
@@ -220,6 +222,7 @@ export default function SalesPage() {
   const resetNew = () => {
     setCart([]);
     setCustomerName('');
+    setInvoiceStatus('Unpaid');
     setVatEnabled(false);
     setDiscountValue('');
     setDiscountType('amount');
@@ -240,7 +243,7 @@ export default function SalesPage() {
   };
 
   if (step === 'success') {
-    const saleId = lastSale?.id || lastSale?.saleId;
+    const saleId = lastSale?.id || lastSale?.saleId || lastSale?._id;
     const receiptUrl = saleId ? `${window.location.origin}/dashboard/transactions/sale/${saleId}` : '';
     const businessName = (user as any)?.businessName || 'My Business';
 
@@ -260,10 +263,38 @@ export default function SalesPage() {
       });
     };
 
+    const handleA4Print = () => {
+      openInvoicePrintWindow({
+        businessName,
+        invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber,
+        date: new Date().toLocaleDateString('en-GB'),
+        customerName: customerName.trim() || undefined,
+        paymentMethod,
+        status: invoiceStatus,
+        items: cart.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.price,
+          total: i.price * i.quantity,
+        })),
+        subtotal,
+        vatAmount: vatEnabled ? vat : 0,
+        discountAmount: discount > 0 ? discount : 0,
+        grandTotal: total,
+        type: 'SALE',
+      });
+    };
+
     const handleWhatsApp = () => {
-      if (!receiptUrl) { toast.error('Receipt link not ready'); return; }
-      const msg = buildSaleWhatsAppMessage({ businessName, customerName: customerName.trim() || undefined, amount: total, receiptUrl, invoiceNo: lastSale?.invoiceNumber });
-      window.open(buildWhatsAppUrl(msg), '_blank');
+      const msg = buildSaleWhatsAppMessage({
+        businessName,
+        customerName: customerName.trim() || undefined,
+        amount: total,
+        receiptUrl: receiptUrl || undefined,
+        invoiceNo: lastSale?.invoiceNumber,
+        items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price })),
+      });
+      openWhatsApp(msg);
     };
 
     return (
@@ -299,14 +330,24 @@ export default function SalesPage() {
             Share via WhatsApp
           </button>
 
-          {/* Thermal / Receipt print */}
-          <button onClick={handleThermalPrint}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-[#050A30] text-white rounded-xl text-sm font-semibold hover:bg-[#0a1460] transition-colors">
-            <Printer size={16} /> Print Receipt
-          </button>
-
-          {/* Secondary row: copy link + view */}
+          {/* Print row: A4 + Thermal */}
           <div className="grid grid-cols-2 gap-2">
+            <button onClick={handleA4Print}
+              className="flex items-center justify-center gap-1.5 py-3 bg-purple-50 rounded-xl text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
+              <Printer size={16} /> Print A4
+            </button>
+            <button onClick={handleThermalPrint}
+              className="flex items-center justify-center gap-1.5 py-3 bg-[#050A30] text-white rounded-xl text-sm font-semibold hover:bg-[#0a1460] transition-colors">
+              <Printer size={16} /> Thermal
+            </button>
+          </div>
+
+          {/* Secondary row: download PDF + copy link + view */}
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={handleA4Print}
+              className="flex items-center justify-center gap-1.5 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              <Download size={14} /> PDF
+            </button>
             <button onClick={handleShareReceipt}
               className="flex items-center justify-center gap-1.5 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
               <Share2 size={14} /> Copy Link
@@ -489,6 +530,24 @@ export default function SalesPage() {
                   <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${vatEnabled ? 'left-4' : 'left-0.5'}`} />
                 </div>
               </label>
+
+              {/* Invoice Status — matches mobile AddSaleScreen */}
+              <div>
+                <p className="text-xs text-gray-500 mb-1.5">Invoice Status</p>
+                <div className="flex flex-wrap gap-1">
+                  {(['Draft', 'Partial Payment', 'Paid', 'Unpaid'] as const).map(s => (
+                    <button key={s} onClick={() => setInvoiceStatus(s)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${invoiceStatus === s
+                        ? s === 'Paid' ? 'bg-green-500 text-white border-green-500'
+                        : s === 'Partial Payment' ? 'bg-amber-500 text-white border-amber-500'
+                        : s === 'Draft' ? 'bg-gray-400 text-white border-gray-400'
+                        : 'bg-[#050A30] text-white border-[#050A30]'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="space-y-1 pt-1">
                 <div className="flex justify-between text-xs text-gray-500"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>

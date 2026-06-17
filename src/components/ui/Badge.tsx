@@ -27,14 +27,25 @@ export function Badge({ children, variant = 'gray', className }: BadgeProps) {
 
 export function statusBadge(status: string) {
   const map: Record<string, 'green' | 'red' | 'yellow' | 'orange' | 'blue' | 'gray'> = {
-    PAID: 'green', ACTIVE: 'green', paid: 'green',
-    PENDING: 'yellow', pending: 'yellow',
-    OVERDUE: 'red', overdue: 'red', FAILED: 'red', failed: 'red',
-    DRAFT: 'gray', draft: 'gray',
-    UNPAID: 'orange', unpaid: 'orange',
-    CANCELLED: 'gray', cancelled: 'gray',
+    // uppercase (legacy web)
+    PAID: 'green', ACTIVE: 'green',
+    PENDING: 'yellow',
+    OVERDUE: 'red', FAILED: 'red',
+    DRAFT: 'gray', UNPAID: 'orange',
+    CANCELLED: 'gray', SENT: 'blue',
     'PARTIAL PAYMENT': 'blue',
-    SENT: 'blue', sent: 'blue',
+    // Title Case (matching mobile)
+    Paid: 'green',
+    Sent: 'blue',
+    Draft: 'gray',
+    Unpaid: 'orange',
+    Overdue: 'red',
+    Cancelled: 'gray',
+    'Partial Payment': 'blue',
+    // lowercase fallbacks
+    paid: 'green', pending: 'yellow', overdue: 'red',
+    failed: 'red', draft: 'gray', unpaid: 'orange',
+    cancelled: 'gray', sent: 'blue',
   };
   return map[status] || 'gray';
 }

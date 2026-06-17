@@ -49,7 +49,7 @@ export default function StockPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({
     name: '', category: '', unitPrice: '', quantity: '',
-    kg: '', description: '', barcode: '', status: '',
+    kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5',
   });
   const qc = useQueryClient();
 
@@ -85,7 +85,7 @@ export default function StockPage() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', category: '', unitPrice: '', quantity: '', kg: '', description: '', barcode: '', status: '' });
+    setForm({ name: '', category: '', unitPrice: '', quantity: '', kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5' });
     setModal('add');
   };
 
@@ -96,6 +96,7 @@ export default function StockPage() {
       unitPrice: String(p.unitPrice || ''), quantity: String(p.quantity || ''),
       kg: p.unit || '', description: p.description || '',
       barcode: p.barcode || '', status: p.status || '',
+      lowStockThreshold: String(p.lowStockThreshold ?? 5),
     });
     setModal('edit');
   };
@@ -115,7 +116,7 @@ export default function StockPage() {
       unit: form.kg || 'pcs',
       description: form.description || undefined,
       barcode: form.barcode || undefined,
-      lowStockThreshold: 5,
+      lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
       status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
     };
   };
@@ -417,6 +418,19 @@ export default function StockPage() {
                   placeholder="Color, size, variant..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Low Stock Alert (qty)</label>
+                <input
+                  type="number"
+                  value={form.lowStockThreshold}
+                  onChange={e => setForm(f => ({ ...f, lowStockThreshold: e.target.value }))}
+                  placeholder="5"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-400">Show "Low Stock" badge when quantity falls below this</p>
               </div>
             </div>
 

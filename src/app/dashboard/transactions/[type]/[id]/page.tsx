@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 import { useAuth } from '@/context/AuthContext';
-import { openReceiptPrintWindow, buildWhatsAppUrl, buildSaleWhatsAppMessage, buildInvoiceWhatsAppMessage } from '@/lib/receiptPrint';
+import { openReceiptPrintWindow, openWhatsApp, buildSaleWhatsAppMessage, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
 
 const TYPE_CONFIG: Record<string, {
   label: string; icon: any; iconBg: string; iconColor: string;
@@ -48,7 +48,7 @@ const TYPE_CONFIG: Record<string, {
   },
 };
 
-const INVOICE_STATUSES = ['PAID', 'PENDING', 'UNPAID', 'OVERDUE', 'DRAFT', 'CANCELLED'];
+const INVOICE_STATUSES = ['Draft', 'Sent', 'Paid', 'Partial Payment', 'Overdue', 'Cancelled', 'Unpaid'];
 
 export default function TransactionDetailPage() {
   const { isOwner, can } = usePermissions();
@@ -94,7 +94,40 @@ export default function TransactionDetailPage() {
       .catch(() => toast.error('Could not copy link'));
   };
 
-  const handlePrint = () => window.print();
+  const handleA4Print = (item: any) => {
+    const businessName = (user as any)?.businessName || 'My Business';
+    const lineItems = (item.items || item.saleItems || item.invoiceItems || []).map((li: any) => ({
+      name: li.name || li.productName || li.description || 'Item',
+      description: li.description || undefined,
+      quantity: Number(li.quantity || li.qty || 1),
+      unitPrice: Number(li.unitPrice || li.price || 0),
+      total: Number(li.total || li.amount || (li.quantity || 1) * (li.unitPrice || li.price || 0)),
+    }));
+    const grandTotal = Number(item.grandTotal || item.amount || item.total || 0);
+    const subtotal = Number(item.subtotal || item.subTotal || grandTotal);
+    openInvoicePrintWindow({
+      businessName,
+      invoiceNo: item.invoiceNumber || item.saleNumber || item.referenceNumber,
+      date: item.invoiceDate || item.createdAt
+        ? new Date(item.invoiceDate || item.createdAt).toLocaleDateString('en-GB') : undefined,
+      dueDate: item.dueDate ? new Date(item.dueDate).toLocaleDateString('en-GB') : undefined,
+      customerName: item.customerName || item.customer?.name || undefined,
+      customerEmail: item.customerEmail || item.customer?.email || undefined,
+      customerPhone: item.customerPhone || item.customer?.phone || undefined,
+      paymentMethod: item.paymentMethod,
+      status: item.status,
+      items: lineItems,
+      subtotal,
+      vatAmount: Number(item.vatAmount || item.tax || 0),
+      discountAmount: Number(item.discount || item.discountAmount || 0),
+      grandTotal,
+      amountPaid: item.paidAmount || item.amountPaid || undefined,
+      notes: item.notes || undefined,
+      terms: item.terms || undefined,
+      type: type?.toLowerCase() === 'invoice' ? 'INVOICE'
+        : type?.toLowerCase() === 'expense' ? 'EXPENSE' : 'SALE',
+    });
+  };
 
   const handleDownloadPDF = async () => {
     try {
@@ -145,7 +178,7 @@ export default function TransactionDetailPage() {
     } else {
       msg = buildSaleWhatsAppMessage({ businessName, customerName: item.customerName, amount, receiptUrl: pageUrl, invoiceNo: item.invoiceNumber || item.saleNumber });
     }
-    window.open(buildWhatsAppUrl(msg), '_blank');
+    openWhatsApp(msg);
   };
 
   if (!isOwner && !can('view_transactions')) {
@@ -357,12 +390,12 @@ export default function TransactionDetailPage() {
           <Printer size={18} /> Print Receipt
         </button>
 
-        {/* Standard Print */}
+        {/* A4 / Standard Print */}
         <button
-          onClick={handlePrint}
+          onClick={() => handleA4Print(item)}
           className="w-full flex items-center justify-center gap-2.5 py-4 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 transition-colors"
         >
-          <Printer size={18} /> Print (Full Page)
+          <Printer size={18} /> Print A4
         </button>
 
         {/* Send via email — invoice with email */}

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { openReceiptPrintWindow, buildWhatsAppUrl, buildInvoiceWhatsAppMessage } from '@/lib/receiptPrint';
+import { openReceiptPrintWindow, openWhatsApp, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
 import { getInvoiceDownloadLink, sendInvoice } from '@/services/apiService';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -40,7 +40,7 @@ export default function NewInvoicePage() {
     invoiceDate: new Date().toISOString().split('T')[0], dueDate: '',
     paymentMethod: 'TRANSFER', notes: '', terms: '',
     vatRate: '0', discountType: 'amount' as 'amount' | 'percent', discountValue: '0',
-    status: 'PENDING',
+    status: 'Draft', partialAmountPaid: '',
   });
   const [items, setItems] = useState<InvoiceItem[]>([{ name: '', description: '', quantity: 1, unitPrice: 0 }]);
   const [productSearch, setProductSearch] = useState('');
@@ -140,6 +140,8 @@ export default function NewInvoicePage() {
       items: validItems.map(i => ({ name: i.name, description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, total: i.quantity * i.unitPrice })),
       subtotal, vatRate: parseFloat(form.vatRate), vatAmount,
       discount: discountAmt, grandTotal,
+      paidAmount: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
+        ? parseFloat(form.partialAmountPaid) : undefined,
     });
   };
 
@@ -174,17 +176,47 @@ export default function NewInvoicePage() {
       });
     };
 
+    const handleA4Print = () => {
+      openInvoicePrintWindow({
+        businessName,
+        invoiceNo: invNum,
+        date: form.invoiceDate,
+        dueDate: form.dueDate || undefined,
+        customerName: form.customerName || undefined,
+        customerEmail: form.customerEmail || undefined,
+        customerPhone: form.customerPhone || undefined,
+        customerAddress: form.customerAddress || undefined,
+        paymentMethod: form.paymentMethod,
+        status: form.status,
+        items: items.filter(i => i.name && i.unitPrice >= 0).map(i => ({
+          name: i.name,
+          description: i.description || undefined,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          total: i.quantity * i.unitPrice,
+        })),
+        subtotal,
+        vatAmount,
+        discountAmount: discountAmt > 0 ? discountAmt : 0,
+        grandTotal,
+        amountPaid: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
+          ? parseFloat(form.partialAmountPaid) : undefined,
+        notes: form.notes || undefined,
+        terms: form.terms || undefined,
+        type: 'INVOICE',
+      });
+    };
+
     const handleWhatsApp = () => {
-      if (!shareUrl) { toast.error('Invoice link not ready'); return; }
       const msg = buildInvoiceWhatsAppMessage({
         businessName,
         customerName: form.customerName || undefined,
         amount: grandTotal,
-        invoiceUrl: shareUrl,
+        invoiceUrl: shareUrl || `${window.location.origin}/dashboard/invoices`,
         invoiceNo: invNum,
         dueDate: form.dueDate || undefined,
       });
-      window.open(buildWhatsAppUrl(msg), '_blank');
+      openWhatsApp(msg);
     };
 
     const handleEmail = async () => {
@@ -257,7 +289,7 @@ export default function NewInvoicePage() {
             <Send size={18} />
             Email
           </button>
-          <button onClick={() => window.print()}
+          <button onClick={handleA4Print}
             className="flex flex-col items-center gap-1.5 py-3 bg-purple-50 rounded-xl text-xs font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
             <Printer size={18} />
             Print A4
@@ -467,12 +499,38 @@ export default function NewInvoicePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Invoice Status</label>
-                <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white">
-                  {['DRAFT', 'PENDING', 'PAID', 'UNPAID'].map(s => <option key={s}>{s}</option>)}
-                </select>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payment Status</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['Draft', 'Sent', 'Paid', 'Partial Payment', 'Overdue', 'Cancelled'] as const).map(s => (
+                    <button key={s} type="button" onClick={() => setForm(f => ({ ...f, status: s }))}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${form.status === s
+                        ? s === 'Paid' ? 'bg-green-500 text-white border-green-500'
+                        : s === 'Partial Payment' ? 'bg-amber-500 text-white border-amber-500'
+                        : s === 'Overdue' ? 'bg-red-500 text-white border-red-500'
+                        : s === 'Sent' ? 'bg-blue-500 text-white border-blue-500'
+                        : s === 'Cancelled' ? 'bg-gray-400 text-white border-gray-400'
+                        : 'bg-[#050A30] text-white border-[#050A30]'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {form.status === 'Partial Payment' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Amount Paid (₦)</label>
+                  <input type="number" value={form.partialAmountPaid}
+                    onChange={e => setForm(f => ({ ...f, partialAmountPaid: e.target.value }))}
+                    min="0" step="0.01" placeholder="0.00"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" />
+                  {parseFloat(form.partialAmountPaid) > 0 && (
+                    <p className="mt-1 text-xs text-amber-600 font-medium">
+                      Balance due: {formatCurrency(Math.max(0, grandTotal - parseFloat(form.partialAmountPaid)))}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Totals */}
