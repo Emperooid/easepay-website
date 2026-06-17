@@ -214,30 +214,29 @@ export default function NewInvoicePage() {
       customerName: form.customerName,
       paymentMethod: form.paymentMethod,
       status: form.status,
-      invoiceDate: form.invoiceDate,
+      invoiceDate: form.invoiceDate ? new Date(form.invoiceDate).toISOString() : new Date().toISOString(),
       vatRate: parseFloat(form.vatRate) || 0,
       discountType: form.discountType,
       items: validItems.map(i => ({
         name: i.name,
-        description: i.description || undefined,
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         total: i.quantity * i.unitPrice,
       })),
       subtotal,
       vatAmount,
-      discount: discountAmt,
+      discountAmount: discountAmt,
       grandTotal,
+      total: grandTotal,
     };
 
     // Only include optional string fields when non-empty
     if (form.customerEmail)   payload.customerEmail   = form.customerEmail;
     if (form.customerPhone)   payload.customerPhone   = form.customerPhone;
     if (form.customerAddress) payload.customerAddress = form.customerAddress;
-    if (form.dueDate)         payload.dueDate         = form.dueDate;
+    if (form.dueDate)         payload.dueDate         = new Date(form.dueDate).toISOString();
     if (form.notes)           payload.notes           = form.notes;
     if (form.terms)           payload.terms           = form.terms;
-    if (parseFloat(form.discountValue) > 0) payload.discountValue = parseFloat(form.discountValue);
     if (isPartialPay)         payload.paidAmount      = parseFloat(form.partialAmountPaid);
 
     if (editId) {
