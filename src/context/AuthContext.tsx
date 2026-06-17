@@ -111,7 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const sendOTP = async (email: string, phone: string): Promise<boolean> => {
-    dispatch({ type: 'AUTH_START' });
+    // Don't dispatch AUTH_START here — that leaves isLoading=true with no matching
+    // AUTH_SUCCESS/AUTH_FAILURE to clear it. The signup page manages loading locally.
     try {
       const res = await api.sendOTP(email, phone);
       if (res.success) { dispatch({ type: 'CLEAR_ERROR' }); return true; }

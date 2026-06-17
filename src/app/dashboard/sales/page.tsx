@@ -11,8 +11,9 @@ import {
   ChevronLeft, ChevronRight, Share2, ExternalLink, Printer, Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { openReceiptPrintWindow, openWhatsApp, buildSaleWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import { openWhatsApp, buildSaleWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
 import { useAuth } from '@/context/AuthContext';
+import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
@@ -62,6 +63,7 @@ export default function SalesPage() {
   const { isOwner, can } = usePermissions();
   const { isTransactionBlocked, isTrialExpired } = useSubscription();
   const [step, setStep] = useState<Step>('list');
+  const [showThermalModal, setShowThermalModal] = useState(false);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [enabledMethods, setEnabledMethods] = useState(ALL_PAYMENT_METHODS);
@@ -247,20 +249,18 @@ export default function SalesPage() {
     const receiptUrl = saleId ? `${window.location.origin}/dashboard/transactions/sale/${saleId}` : '';
     const businessName = (user as any)?.businessName || 'My Business';
 
-    const handleThermalPrint = () => {
-      openReceiptPrintWindow({
-        businessName,
-        invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber,
-        date: new Date().toLocaleDateString('en-GB'),
-        customerName: customerName.trim() || undefined,
-        paymentMethod,
-        items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, total: i.price * i.quantity })),
-        subtotal,
-        vatAmount: vatEnabled ? vat : 0,
-        discountAmount: discount > 0 ? discount : 0,
-        grandTotal: total,
-        receiptType: 'RECEIPT',
-      });
+    const thermalReceiptData = {
+      businessName,
+      invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber,
+      date: new Date().toLocaleDateString('en-GB'),
+      customerName: customerName.trim() || undefined,
+      paymentMethod,
+      items: cart.map(i => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, total: i.price * i.quantity })),
+      subtotal,
+      vatAmount: vatEnabled ? vat : 0,
+      discountAmount: discount > 0 ? discount : 0,
+      grandTotal: total,
+      receiptType: 'RECEIPT' as const,
     };
 
     const handleA4Print = () => {
@@ -336,7 +336,7 @@ export default function SalesPage() {
               className="flex items-center justify-center gap-1.5 py-3 bg-purple-50 rounded-xl text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
               <Printer size={16} /> Print A4
             </button>
-            <button onClick={handleThermalPrint}
+            <button onClick={() => setShowThermalModal(true)}
               className="flex items-center justify-center gap-1.5 py-3 bg-[#050A30] text-white rounded-xl text-sm font-semibold hover:bg-[#0a1460] transition-colors">
               <Printer size={16} /> Thermal
             </button>
@@ -369,6 +369,12 @@ export default function SalesPage() {
             View All Sales
           </button>
         </div>
+
+        <ThermalPrintModal
+          visible={showThermalModal}
+          onClose={() => setShowThermalModal(false)}
+          receiptData={thermalReceiptData}
+        />
       </div>
     );
   }

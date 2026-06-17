@@ -20,7 +20,8 @@ import { useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 import { useAuth } from '@/context/AuthContext';
-import { openReceiptPrintWindow, openWhatsApp, buildSaleWhatsAppMessage, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import { openWhatsApp, buildSaleWhatsAppMessage, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import ThermalPrintModal, { type ThermalReceiptData } from '@/components/ui/ThermalPrintModal';
 
 const TYPE_CONFIG: Record<string, {
   label: string; icon: any; iconBg: string; iconColor: string;
@@ -57,6 +58,8 @@ export default function TransactionDetailPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false);
+  const [thermalData, setThermalData] = useState<ThermalReceiptData | null>(null);
 
   const config = TYPE_CONFIG[type?.toLowerCase()];
 
@@ -140,7 +143,6 @@ export default function TransactionDetailPage() {
     }
   };
 
-  // Thermal print — runs after item is loaded (called below in JSX)
   const handleThermalPrint = (item: any) => {
     const businessName = (user as any)?.businessName || 'My Business';
     const lineItems = (item.items || item.saleItems || item.invoiceItems || []).map((li: any) => ({
@@ -151,10 +153,13 @@ export default function TransactionDetailPage() {
     }));
     const grandTotal = Number(item.grandTotal || item.amount || item.total || 0);
     const subtotal   = Number(item.subtotal || item.subTotal || grandTotal);
-    openReceiptPrintWindow({
+    const dateStr = (item.invoiceDate || item.createdAt)
+      ? new Date(item.invoiceDate || item.createdAt).toLocaleDateString('en-GB')
+      : undefined;
+    setThermalData({
       businessName,
       invoiceNo: item.invoiceNumber || item.saleNumber || item.referenceNumber,
-      date: item.invoiceDate || item.createdAt ? new Date(item.invoiceDate || item.createdAt).toLocaleDateString('en-GB') : undefined,
+      date: dateStr,
       customerName: item.customerName || item.customer?.name || undefined,
       paymentMethod: item.paymentMethod,
       items: lineItems,
@@ -162,9 +167,10 @@ export default function TransactionDetailPage() {
       vatAmount: Number(item.vatAmount || item.tax || 0),
       discountAmount: Number(item.discount || item.discountAmount || 0),
       grandTotal,
-      receiptType: type?.toLowerCase() === 'invoice' ? 'INVOICE' : type?.toLowerCase() === 'expense' ? 'EXPENSE' : 'RECEIPT',
+      receiptType: (type?.toLowerCase() === 'invoice' ? 'INVOICE' : type?.toLowerCase() === 'expense' ? 'EXPENSE' : 'RECEIPT') as 'RECEIPT' | 'INVOICE' | 'EXPENSE',
       notes: item.notes,
     });
+    setShowThermalModal(true);
   };
 
   const handleWhatsApp = (item: any) => {
@@ -478,6 +484,14 @@ export default function TransactionDetailPage() {
       </div>
 
       {showStatusMenu && <div className="fixed inset-0 z-0" onClick={() => setShowStatusMenu(false)} />}
+
+      {thermalData && (
+        <ThermalPrintModal
+          visible={showThermalModal}
+          onClose={() => setShowThermalModal(false)}
+          receiptData={thermalData}
+        />
+      )}
     </div>
   );
 }
