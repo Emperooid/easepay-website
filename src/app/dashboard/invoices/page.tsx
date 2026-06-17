@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
 const STATUSES = ['ALL', 'PAID', 'PENDING', 'OVERDUE', 'DRAFT', 'UNPAID', 'CANCELLED'];
 const PAGE_SIZE = 20;
@@ -24,6 +26,7 @@ function getPageNums(cur: number, total: number): (number | '…')[] {
 }
 
 export default function InvoicesPage() {
+  const { isOwner, can } = usePermissions();
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -134,6 +137,10 @@ export default function InvoicesPage() {
     pending: rawInvoices.filter((i: any) => ['PENDING', 'UNPAID'].includes(i.status)).length,
     overdue: rawInvoices.filter((i: any) => i.status === 'OVERDUE').length,
   };
+
+  if (!isOwner && !can('manage_invoices')) {
+    return <AccessRestricted message="You don't have permission to view invoices." />;
+  }
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">

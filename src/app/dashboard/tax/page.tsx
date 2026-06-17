@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSales, getExpenses, getInvoices } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
@@ -10,6 +10,9 @@ import {
   ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
+import { useSubscription } from '@/context/SubscriptionContext';
 
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
@@ -33,6 +36,8 @@ function extractVat(rec: any): number {
 }
 
 export default function TaxPage() {
+  const { isOwner, can } = usePermissions();
+  const { can: canSub } = useSubscription();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear,  setSelectedYear]  = useState(now.getFullYear());
@@ -137,8 +142,12 @@ export default function TaxPage() {
   const netProfit    = totalRevenue - totalExpenses;
   const netVat       = vatIn - vatOut;
   const taxableInc   = netProfit;
-  // Simplified company income tax estimate (30% of taxable income > 0)
   const estimatedTax = taxableInc > 0 ? taxableInc * 0.30 : 0;
+
+  // Write VAT net balance to localStorage so expense validation can read it
+  useEffect(() => {
+    if (vatIn > 0 || vatOut > 0) localStorage.setItem('computed_vat_net_balance', String(Math.max(0, netVat)));
+  }, [netVat, vatIn, vatOut]);
 
   const visibleEntries = showAllEntries ? entries : entries.slice(0, 8);
 
@@ -155,6 +164,8 @@ export default function TaxPage() {
   const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
 
   const exportCSV = () => {
+    if (!isOwner && !can('export_data')) { toast.error('You do not have permission to export tax data.'); return; }
+    if (!canSub('csvExport')) { toast.error('CSV export is available on Basic and Business plans. Please upgrade.'); return; }
     if (!entries.length) { toast.error('No tax data to export'); return; }
     const rows = [
       ['Date', 'Name', 'Type', 'Direction', 'Tax Amount'],
@@ -182,6 +193,10 @@ export default function TaxPage() {
     { label: 'VAT on Expenses', value: formatCurrency(vatOut),         icon: Calculator,   color: 'text-orange-600', bg: 'bg-orange-50' },
     { label: 'Net VAT Payable', value: formatCurrency(Math.max(0, netVat)), icon: Calculator, color: 'text-[#050A30]', bg: 'bg-[#050A30]/5' },
   ];
+
+  if (!isOwner && !can('view_tax')) {
+    return <AccessRestricted message="You don't have permission to view the tax summary." />;
+  }
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">

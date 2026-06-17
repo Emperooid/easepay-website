@@ -193,10 +193,11 @@ export const saveBalanceSettings = (cashBalance: number, bankBalance: number) =>
 
 // Staff
 export const getTeamMembers = () => request('/business/staff');
-export const inviteTeamMember = (email: string, role: string, phone?: string, permissions?: string[], roleId?: string) => {
-  const payload: any = { email, role, phone, permissions, roleId };
-  Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-  return request('/business/staff/invite', { method: 'POST', body: JSON.stringify(payload) });
+export const getBusinessRoles = () => request('/business/roles');
+export const inviteStaff = (payload: { businessId: string; email?: string; phone?: string; name?: string; role: string; roleId?: string; permissions?: string[] }) => {
+  const body: any = { ...payload };
+  Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+  return request('/business/staff/invite', { method: 'POST', body: JSON.stringify(body) });
 };
 export const removeTeamMember = (userId: string) => request(`/business/staff/${userId}`, { method: 'DELETE' });
 export const updateStaffPermissions = (staffId: string, permissions: string[], role?: string) => {
@@ -207,6 +208,14 @@ export const updateStaffPermissions = (staffId: string, permissions: string[], r
 export const getInvitations = () => request('/invitations');
 export const resendInvite = (id: string) => request(`/invitations/${id}/resend`, { method: 'POST' });
 export const revokeInvite = (id: string) => request(`/invitations/${id}`, { method: 'DELETE' });
+
+// Invitations (accept-invite flow for invited staff)
+export const verifyInviteToken = (token: string) => request(`/invitations/verify/${token}`);
+export const acceptInvite = async (payload: { token: string; email: string; firstName: string; lastName: string; password: string; pin: string }) => {
+  const res = await request('/invitations/accept', { method: 'POST', body: JSON.stringify(payload) });
+  if (res.success && res.token) setToken(res.token);
+  return res;
+};
 
 // Settings
 export const getSettings = () => request('/settings');
@@ -244,3 +253,4 @@ export const uploadImage = async (file: File): Promise<string> => {
 
 export const isAuthenticated = () => !!getToken();
 export const getToken_ = getToken;
+export const setAuthToken = setToken;

@@ -1,33 +1,44 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getExpenses, createExpense, deleteExpense } from '@/services/apiService';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { getExpenses, createExpense, deleteExpense, updateExpense, getExpense } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import {
   Plus, Search, Loader2, Receipt, Trash2, CheckCircle2,
   Banknote, CreditCard, ArrowLeftRight, X, ShoppingBag,
   Zap, Home, Truck, Users, Megaphone, Wrench, Package,
-  Coffee, Wifi, Heart, HelpCircle, MoreHorizontal,
-  ChevronLeft, ChevronRight,
+  Wifi, HelpCircle, MoreHorizontal,
+  ChevronLeft, ChevronRight, Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useSubscription } from '@/context/SubscriptionContext';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
+import Link from 'next/link';
 
+// Categories aligned with mobile AddExpenseScreen — id is the stored value
 const CATEGORIES = [
-  { name: 'Food & Drinks', icon: Coffee, color: 'bg-orange-50 text-orange-600 border-orange-200' },
-  { name: 'Transport', icon: Truck, color: 'bg-blue-50 text-blue-600 border-blue-200' },
-  { name: 'Utilities', icon: Zap, color: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
-  { name: 'Rent', icon: Home, color: 'bg-purple-50 text-purple-600 border-purple-200' },
-  { name: 'Salaries', icon: Users, color: 'bg-green-50 text-green-600 border-green-200' },
-  { name: 'Supplies', icon: Package, color: 'bg-gray-50 text-gray-600 border-gray-200' },
-  { name: 'Marketing', icon: Megaphone, color: 'bg-pink-50 text-pink-600 border-pink-200' },
-  { name: 'Maintenance', icon: Wrench, color: 'bg-red-50 text-red-600 border-red-200' },
-  { name: 'Internet', icon: Wifi, color: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
-  { name: 'Healthcare', icon: Heart, color: 'bg-rose-50 text-rose-600 border-rose-200' },
-  { name: 'Shopping', icon: ShoppingBag, color: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
-  { name: 'Other', icon: MoreHorizontal, color: 'bg-slate-50 text-slate-600 border-slate-200' },
+  { id: 'rent',        name: 'Rent / Lease',       icon: Home,            color: 'bg-purple-50 text-purple-600 border-purple-200' },
+  { id: 'inventory',   name: 'Inventory',           icon: Package,         color: 'bg-blue-50 text-blue-600 border-blue-200' },
+  { id: 'electricity', name: 'Electricity',         icon: Zap,             color: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
+  { id: 'salaries',    name: 'Salaries',            icon: Users,           color: 'bg-green-50 text-green-600 border-green-200' },
+  { id: 'transport',   name: 'Transport',           icon: Truck,           color: 'bg-blue-50 text-blue-600 border-blue-200' },
+  { id: 'marketing',   name: 'Marketing',           icon: Megaphone,       color: 'bg-pink-50 text-pink-600 border-pink-200' },
+  { id: 'equipment',   name: 'Equipment',           icon: Wrench,          color: 'bg-orange-50 text-orange-600 border-orange-200' },
+  { id: 'internet',    name: 'Internet / Telecom',  icon: Wifi,            color: 'bg-cyan-50 text-cyan-600 border-cyan-200' },
+  { id: 'office',      name: 'Office Supplies',     icon: ShoppingBag,     color: 'bg-indigo-50 text-indigo-600 border-indigo-200' },
+  { id: 'maintenance', name: 'Maintenance',         icon: Wrench,          color: 'bg-red-50 text-red-600 border-red-200' },
+  { id: 'tax',         name: 'Tax / Levies',        icon: Receipt,         color: 'bg-slate-50 text-slate-600 border-slate-200' },
+  { id: 'others',      name: 'Others',              icon: MoreHorizontal,  color: 'bg-gray-50 text-gray-600 border-gray-200' },
 ];
+
+function getCatInfo(category: string | undefined) {
+  if (!category) return undefined;
+  return CATEGORIES.find(c => c.id === category || c.name.toLowerCase() === category.toLowerCase());
+}
 
 const PAYMENT_METHODS = [
   { value: 'CASH', label: 'Cash', icon: Banknote },
@@ -47,7 +58,14 @@ function getPageNums(cur: number, total: number): (number | '…')[] {
 type Step = 'list' | 'new' | 'success';
 
 export default function ExpensesPage() {
-  const [step, setStep] = useState<Step>('list');
+  const { isOwner, can } = usePermissions();
+  const { isTransactionBlocked, isTrialExpired } = useSubscription();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editId = searchParams.get('editId');
+  const isEditing = !!editId;
+
+  const [step, setStep] = useState<Step>(editId ? 'new' : 'list');
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [page, setPage] = useState(1);
@@ -59,6 +77,24 @@ export default function ExpensesPage() {
   const [lastExpense, setLastExpense] = useState<any>(null);
   const qc = useQueryClient();
 
+  // Load existing expense data when editing
+  useEffect(() => {
+    if (!editId) return;
+    getExpense(editId).then((res: any) => {
+      const d = res?.data?.expense || res?.data || res?.expense || res;
+      if (!d) return;
+      setForm({
+        amount: String(d.amount || ''),
+        category: d.category || '',
+        description: d.description || '',
+        date: d.date ? d.date.split('T')[0] : new Date().toISOString().split('T')[0],
+        paymentMethod: d.paymentMethod || 'CASH',
+        vendor: d.vendor || '',
+        vatAmount: d.vatAmount ? String(d.vatAmount) : '',
+      });
+    }).catch(() => {});
+  }, [editId]);
+
   const { data, isLoading } = useQuery({ queryKey: ['expenses'], queryFn: () => getExpenses({ limit: 100 }) });
 
   const invalidateAll = () => {
@@ -67,6 +103,17 @@ export default function ExpensesPage() {
     qc.invalidateQueries({ queryKey: ['expenses-recent'] });
     qc.invalidateQueries({ queryKey: ['dashboard-home'] });
   };
+
+  const updateMut = useMutation({
+    mutationFn: (data: any) => updateExpense(editId!, data),
+    onSuccess: (res: any) => {
+      if (!res?.success && res?.message) { toast.error(res.message); return; }
+      invalidateAll();
+      toast.success('Expense updated!');
+      router.push(`/dashboard/transactions/expense/${editId}`);
+    },
+    onError: (e: any) => toast.error(e.message || 'Failed to update expense'),
+  });
 
   const createMut = useMutation({
     mutationFn: createExpense,
@@ -104,23 +151,68 @@ export default function ExpensesPage() {
 
   const resetForm = () => setForm({ amount: '', category: '', description: '', date: new Date().toISOString().split('T')[0], paymentMethod: 'CASH', vendor: '', vatAmount: '' });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (createMut.isPending) return;
-    if (!form.category) { toast.error('Select a category'); return; }
-    createMut.mutate({
+  const [vatOverrideConfirmed, setVatOverrideConfirmed] = useState(false);
+
+  const submitExpense = () => {
+    const catName = getCatInfo(form.category)?.name || form.category;
+    const payload = {
       amount: parseFloat(form.amount),
       category: form.category,
-      description: form.description,
+      description: form.description.trim() || `${catName} expense`,
       date: form.date || new Date().toISOString(),
       paymentMethod: form.paymentMethod,
       vendor: form.vendor || undefined,
       vatAmount: form.vatAmount ? parseFloat(form.vatAmount) : undefined,
-    });
+    };
+    if (isEditing) updateMut.mutate(payload);
+    else createMut.mutate(payload);
+    setVatOverrideConfirmed(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (createMut.isPending) return;
+    if (!form.category) { toast.error('Select a category'); return; }
+
+    const expAmount = parseFloat(form.amount) || 0;
+
+    // Balance validation — same logic as mobile's AsyncStorage check
+    const isCash = form.paymentMethod === 'CASH';
+    const computedKey = isCash ? 'computed_cash_in_hand' : 'computed_cash_in_bank';
+    const startingKey = isCash ? 'starting_cash_balance' : 'starting_bank_balance';
+    const computedRaw = localStorage.getItem(computedKey);
+    const startingRaw = localStorage.getItem(startingKey);
+
+    if (computedRaw !== null || startingRaw !== null) {
+      const available = computedRaw !== null ? (parseFloat(computedRaw) || 0) : (parseFloat(startingRaw!) || 0);
+      if (expAmount > available) {
+        const label = isCash ? 'cash at hand' : 'bank balance';
+        toast.error(`Insufficient balance. You are spending ${formatCurrency(expAmount)} but your available ${label} is ${formatCurrency(available)}.`);
+        return;
+      }
+    }
+
+    // VAT validation — warn if VAT payout exceeds net VAT collected
+    const vatEntered = parseFloat(form.vatAmount || '0') || 0;
+    if (vatEntered > 0 && !vatOverrideConfirmed) {
+      const vatBalanceRaw = localStorage.getItem('computed_vat_net_balance');
+      if (vatBalanceRaw !== null) {
+        const vatBalance = parseFloat(vatBalanceRaw) || 0;
+        if (vatEntered > vatBalance) {
+          const cont = window.confirm(
+            `VAT Balance Exceeded\n\nThe VAT amount (${formatCurrency(vatEntered)}) is higher than your available VAT balance (${formatCurrency(vatBalance)}).\n\nYou may have collected less VAT than you are paying out.\n\nAdd anyway?`
+          );
+          if (!cont) return;
+          setVatOverrideConfirmed(true);
+        }
+      }
+    }
+
+    submitExpense();
   };
 
   if (step === 'success') {
-    const catInfo = CATEGORIES.find(c => c.name === (lastExpense?.category || form.category));
+    const catInfo = getCatInfo(lastExpense?.category || form.category);
     const Icon = catInfo?.icon || Receipt;
     return (
       <div className="max-w-sm mx-auto py-6 flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -133,7 +225,7 @@ export default function ExpensesPage() {
         </div>
         <div className="w-full bg-white rounded-xl border border-gray-200 p-4 space-y-2">
           <div className="flex justify-between text-sm"><span className="text-gray-500">Amount</span><span className="font-bold text-red-600">-{formatCurrency(lastExpense?.amount || parseFloat(form.amount))}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-gray-500">Category</span><span className="font-medium">{lastExpense?.category || form.category}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-gray-500">Category</span><span className="font-medium">{catInfo?.name || lastExpense?.category || form.category}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Description</span><span className="font-medium max-w-[60%] text-right">{lastExpense?.description || form.description}</span></div>
           <div className="flex justify-between text-sm"><span className="text-gray-500">Payment</span><span className="font-medium">{lastExpense?.paymentMethod || form.paymentMethod}</span></div>
           {form.vendor && <div className="flex justify-between text-sm"><span className="text-gray-500">Vendor</span><span className="font-medium">{form.vendor}</span></div>}
@@ -146,12 +238,38 @@ export default function ExpensesPage() {
     );
   }
 
+  if (step === 'new' && !isOwner && !can('manage_expenses')) {
+    return <AccessRestricted message="You don't have permission to record expenses." />;
+  }
+
+  if (step === 'new' && isTransactionBlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[420px] text-center px-4">
+        <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+          <Lock size={26} className="text-red-400" />
+        </div>
+        <h2 className="text-base font-bold text-gray-900 mb-1.5">
+          {isTrialExpired ? 'Free Trial Ended' : 'Subscription Required'}
+        </h2>
+        <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-5">
+          {isTrialExpired
+            ? 'Your 30-day free trial has ended. Subscribe to continue recording expenses.'
+            : 'Your subscription has expired. Renew to continue recording expenses.'}
+        </p>
+        <Link href="/dashboard/settings/subscription"
+          className="px-5 py-2.5 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors">
+          View Plans
+        </Link>
+      </div>
+    );
+  }
+
   if (step === 'new') {
     return (
       <div className="max-w-2xl space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
         <div className="flex items-center gap-3">
           <button onClick={() => { resetForm(); setStep('list'); }} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><X size={18} className="text-gray-600" /></button>
-          <h2 className="text-base font-semibold text-gray-900">Add Expense</h2>
+          <h2 className="text-base font-semibold text-gray-900">{isEditing ? 'Edit Expense' : 'Add Expense'}</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
@@ -159,9 +277,9 @@ export default function ExpensesPage() {
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">Category</label>
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-              {CATEGORIES.map(({ name, icon: Icon, color }) => (
-                <button key={name} type="button" onClick={() => setForm(f => ({ ...f, category: name }))}
-                  className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all text-xs font-medium ${form.category === name ? 'border-[#050A30] bg-[#050A30]/5 text-[#050A30]' : `border-transparent ${color} hover:opacity-90`}`}>
+              {CATEGORIES.map(({ id, name, icon: Icon, color }) => (
+                <button key={id} type="button" onClick={() => setForm(f => ({ ...f, category: id }))}
+                  className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border-2 transition-all text-xs font-medium ${form.category === id ? 'border-[#050A30] bg-[#050A30]/5 text-[#050A30]' : `border-transparent ${color} hover:opacity-90`}`}>
                   <Icon size={18} />
                   <span className="text-center leading-tight">{name}</span>
                 </button>
@@ -191,8 +309,8 @@ export default function ExpensesPage() {
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description *</label>
-            <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What was this expense for?" required
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description (Optional)</label>
+            <input type="text" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="e.g. Monthly rent, generator fuel, staff feeding..."
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30]" />
           </div>
 
@@ -223,9 +341,9 @@ export default function ExpensesPage() {
             </div>
           </div>
 
-          <button type="submit" disabled={createMut.isPending}
+          <button type="submit" disabled={createMut.isPending || updateMut.isPending}
             className="w-full py-3 bg-[#050A30] text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#0a1460] transition-colors">
-            {createMut.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving...</> : 'Add Expense'}
+            {(createMut.isPending || updateMut.isPending) ? <><Loader2 size={15} className="animate-spin" /> Saving...</> : isEditing ? 'Save Changes' : 'Add Expense'}
           </button>
         </form>
       </div>
@@ -242,7 +360,7 @@ export default function ExpensesPage() {
           </div>
           <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1); }} className="px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-white">
             <option value="">All Categories</option>
-            {CATEGORIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <button onClick={() => setStep('new')} className="flex items-center gap-2 px-4 py-2 bg-[#050A30] text-white rounded-lg text-sm font-semibold hover:bg-[#0a1460] transition-all hover:shadow-md">
@@ -282,7 +400,7 @@ export default function ExpensesPage() {
           <>
             <div className="divide-y divide-gray-50">
               {expenses.map((exp: any) => {
-                const catInfo = CATEGORIES.find(c => c.name === exp.category);
+                const catInfo = getCatInfo(exp.category);
                 const Icon = catInfo?.icon || HelpCircle;
                 return (
                   <div key={exp.id || exp._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/80 transition-colors group cursor-pointer" onClick={() => window.location.href = `/dashboard/transactions/expense/${exp.id || exp._id}`}>
@@ -291,7 +409,7 @@ export default function ExpensesPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{exp.description}</p>
-                      <p className="text-xs text-gray-400">{exp.category} {exp.vendor ? `· ${exp.vendor}` : ''} · {formatDate(exp.date || exp.createdAt)}</p>
+                      <p className="text-xs text-gray-400">{catInfo?.name || exp.category} {exp.vendor ? `· ${exp.vendor}` : ''} · {formatDate(exp.date || exp.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{exp.paymentMethod || 'CASH'}</span>

@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useQuery } from '@tanstack/react-query';
 import { getSettings, updateSettings } from '@/services/apiService';
 import { useState, useEffect } from 'react';
 import {
   Building2, Users, CreditCard, ChevronRight, LogOut, Lock,
   Wallet, FileText, Download, Bell, Shield, HelpCircle,
-  MessageSquare, Star, Info, Settings, Package, Receipt,
-  Loader2
+  MessageSquare, Info, Package, Phone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -21,34 +21,56 @@ interface SectionLink {
   badge?: string;
 }
 
+// Matches mobile's exact toggles
+interface NotifState {
+  pushNotifications: boolean;
+  smsAlerts: boolean;
+  lowStockAlert: boolean;
+}
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button onClick={onToggle} className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-[#050A30]' : 'bg-gray-200'}`}>
+      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${on ? 'left-6' : 'left-1'}`} />
+    </button>
+  );
+}
+
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const [notifications, setNotifications] = useState({ sales: true, expenses: true, lowStock: true, invoices: true });
-  const [notifDirty, setNotifDirty] = useState(false);
+  const { isOwner } = usePermissions();
+
+  const [notif, setNotif] = useState<NotifState>({ pushNotifications: true, smsAlerts: true, lowStockAlert: true });
 
   const { data } = useQuery({ queryKey: ['settings'], queryFn: getSettings });
-  const updateMut = useMutation({
-    mutationFn: updateSettings,
-    onSuccess: () => { toast.success('Saved'); setNotifDirty(false); },
-    onError: () => toast.error('Failed to save'),
-  });
 
   useEffect(() => {
     if (data) {
       const s = (data?.data || data) as any;
-      if (s?.notifications) setNotifications(prev => ({ ...prev, ...s.notifications }));
+      setNotif({
+        pushNotifications: s?.notificationsEnabled !== false,
+        smsAlerts:         s?.smsAlerts         !== false,
+        lowStockAlert:     s?.lowStockAlert      !== false,
+      });
     }
   }, [data]);
 
-  const toggleNotif = (key: keyof typeof notifications) => {
-    const next = { ...notifications, [key]: !notifications[key] };
-    setNotifications(next);
-    setNotifDirty(true);
-    updateMut.mutate({ notifications: next });
+  // Each toggle saves independently — same as mobile
+  const toggleNotif = async (key: keyof NotifState) => {
+    const newVal = !notif[key];
+    setNotif(prev => ({ ...prev, [key]: newVal }));
+    try {
+      const payload: any =
+        key === 'pushNotifications' ? { notificationsEnabled: newVal } :
+        key === 'smsAlerts'         ? { smsAlerts: newVal } :
+                                      { lowStockAlert: newVal };
+      await updateSettings(payload);
+    } catch {
+      // revert on failure
+      setNotif(prev => ({ ...prev, [key]: !newVal }));
+      toast.error('Failed to save notification setting');
+    }
   };
-
-  const isOwner = user?.role === 'OWNER' || user?.role === 'ADMIN';
-  const isStaff = user?.role === 'STAFF' || user?.role === 'CASHIER' || user?.role === 'MANAGER' || user?.role === 'ACCOUNTANT';
 
   const sections: { title: string; items: SectionLink[] }[] = [
     {
@@ -69,8 +91,7 @@ export default function SettingsPage() {
     ...(isOwner ? [{
       title: 'Team',
       items: [
-        { href: '/dashboard/settings/staff', icon: Users, label: 'Staff Management', desc: 'View and manage team members' },
-        { href: '/dashboard/settings/roles', icon: Shield, label: 'Roles & Permissions', desc: 'Control what staff can access' },
+        { href: '/dashboard/settings/staff', icon: Users, label: 'Manage Staff', desc: 'Invite team members and control what they can access' },
       ],
     }] : []),
     {
@@ -80,7 +101,7 @@ export default function SettingsPage() {
         { href: '/dashboard/settings/subscription', icon: CreditCard, label: 'Subscription', desc: 'View and manage your plan', badge: user?.subscription?.planName || undefined },
       ],
     },
-    ...(isStaff ? [{
+    ...(!isOwner ? [{
       title: 'My Access',
       items: [
         { href: '/dashboard/settings/roles', icon: Shield, label: 'My Permissions', desc: 'View your access level' },
@@ -88,11 +109,10 @@ export default function SettingsPage() {
     }] : []),
   ];
 
-  const NOTIF_ITEMS = [
-    { key: 'sales' as const, label: 'New Sale', desc: 'When a sale is recorded' },
-    { key: 'expenses' as const, label: 'New Expense', desc: 'When an expense is added' },
-    { key: 'lowStock' as const, label: 'Low Stock', desc: 'When inventory runs low' },
-    { key: 'invoices' as const, label: 'Invoice Updates', desc: 'Payment & status changes' },
+  const NOTIF_ITEMS: { key: keyof NotifState; label: string; desc: string }[] = [
+    { key: 'pushNotifications', label: 'Push Notifications', desc: 'Real-time updates and alerts' },
+    { key: 'smsAlerts',         label: 'SMS Alerts',         desc: 'Text message alerts (gateway pending)' },
+    { key: 'lowStockAlert',     label: 'Low Stock Alert',    desc: 'When inventory runs low' },
   ];
 
   return (
@@ -142,7 +162,7 @@ export default function SettingsPage() {
         </div>
       ))}
 
-      {/* Notifications */}
+      {/* Notifications — matches mobile's exact 3 toggles */}
       <div className="space-y-2">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Notifications</p>
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
@@ -157,25 +177,22 @@ export default function SettingsPage() {
                   <p className="text-xs text-gray-400">{desc}</p>
                 </div>
               </div>
-              <button onClick={() => toggleNotif(key)} className={`relative w-11 h-6 rounded-full transition-colors ${notifications[key] ? 'bg-[#050A30]' : 'bg-gray-200'}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${notifications[key] ? 'left-6' : 'left-1'}`} />
-              </button>
+              <Toggle on={notif[key]} onToggle={() => toggleNotif(key)} />
             </div>
           ))}
         </div>
       </div>
 
-      {/* Support & Legal */}
+      {/* Support & Legal — links to internal pages like mobile */}
       <div className="space-y-2">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Support & Legal</p>
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50 overflow-hidden">
           {[
-            { href: 'mailto:support@easepay.app', icon: MessageSquare, label: 'Contact Support', desc: 'Get help from our team', external: true },
-            { href: 'https://easepay.app/privacy', icon: Info, label: 'Privacy Policy', desc: 'How we handle your data', external: true },
-            { href: 'https://easepay.app/terms', icon: FileText, label: 'Terms of Service', desc: 'Rules for using EasePay', external: true },
-          ].map(({ href, icon: Icon, label, desc, external }) => (
-            <a key={href} href={href} target={external ? '_blank' : undefined} rel={external ? 'noopener noreferrer' : undefined}
-              className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
+            { href: '/dashboard/settings/help-center', icon: HelpCircle, label: 'Help Center', desc: 'Contact us & social links', external: false },
+            { href: '/dashboard/settings/privacy-policy', icon: Info, label: 'Privacy Policy', desc: 'How we handle your data', external: false },
+            { href: '/dashboard/settings/terms-of-service', icon: FileText, label: 'Terms of Service', desc: 'Rules for using EasePay', external: false },
+          ].map(({ href, icon: Icon, label, desc }) => (
+            <Link key={href} href={href} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-gray-200 transition-colors flex-shrink-0"><Icon size={17} /></div>
                 <div>
@@ -184,7 +201,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <ChevronRight size={15} className="text-gray-300 group-hover:text-gray-500 transition-colors flex-shrink-0" />
-            </a>
+            </Link>
           ))}
         </div>
       </div>

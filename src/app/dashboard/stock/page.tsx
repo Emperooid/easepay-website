@@ -6,6 +6,8 @@ import { getInventory, createProduct, updateProduct, deleteProduct } from '@/ser
 import { formatCurrency } from '@/lib/utils';
 import { Plus, Search, Loader2, Package, Pencil, Trash2, X, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
 const CATEGORIES = [
   'General', 'Food & Beverages', 'Electronics', 'Clothing & Fashion',
@@ -39,6 +41,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function StockPage() {
+  const { isOwner, can } = usePermissions();
   const [modal, setModal] = useState<ModalMode>(null);
   const [editItem, setEditItem] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -148,6 +151,10 @@ export default function StockPage() {
     }
     return pages;
   };
+
+  if (!isOwner && !can('manage_stocks')) {
+    return <AccessRestricted message="You don't have permission to view or manage stock." />;
+  }
 
   return (
     <div className="space-y-4">

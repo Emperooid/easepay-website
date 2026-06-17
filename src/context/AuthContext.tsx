@@ -39,7 +39,7 @@ const reducer = (state: AuthState, action: AuthAction): AuthState => {
     case 'AUTH_FAILURE': return { ...state, isLoading: false, isAuthenticated: false, user: null, error: action.payload };
     case 'LOGOUT': return { isLoading: false, isAuthenticated: false, user: null, error: null };
     case 'CLEAR_ERROR': return { ...state, error: null };
-    case 'SET_USER': return { ...state, user: action.payload };
+    case 'SET_USER': return { ...state, isLoading: false, isAuthenticated: true, user: action.payload };
     default: return state;
   }
 };
@@ -163,8 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     api.logout();
     localStorage.removeItem('cachedUser');
+    localStorage.removeItem('subscriptionTier');
+    localStorage.removeItem('subscriptionExpiresAt');
     dispatch({ type: 'LOGOUT' });
-    router.push('/login');
+    router.replace('/login');
   };
 
   const setUser = (user: User) => {

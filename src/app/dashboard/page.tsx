@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { getDashboardHome, getSales, getExpenses, getBalanceSettings, getInvoices, getInventory } from '@/services/apiService';
@@ -9,8 +9,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Plus, Minus, Wallet, Building2, TrendingUp,
   ShoppingCart, Receipt, FileText, Package, ChevronRight, ChevronLeft,
-  Search, X,
+  Search, X, AlertTriangle,
 } from 'lucide-react';
+import { useSubscription } from '@/context/SubscriptionContext';
 
 function HealthGauge({ score }: { score: number }) {
   const radius = 15;
@@ -163,6 +164,7 @@ const TYPE_CONFIG = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { isTrialExpired, trialDaysLeft } = useSubscription();
   const [activitySearch, setActivitySearch] = useState('');
   const [activityPage, setActivityPage] = useState(1);
   const DASH_PAGE_SIZE = 10;
@@ -205,6 +207,13 @@ export default function DashboardPage() {
     : computeTodayProfit(allSales, allInvoices, allExpenses, inventoryForLookup);
 
   const { cashInHand, bankBalance } = computeBalances(allSales, allInvoices, allExpenses, startCash, startBank);
+
+  // Mirror computed balances to localStorage so expense validation can read them
+  // without an extra API call (same pattern as mobile's AsyncStorage write).
+  useEffect(() => {
+    if (cashInHand > 0 || startCash > 0) localStorage.setItem('computed_cash_in_hand', String(cashInHand));
+    if (bankBalance > 0 || startBank > 0) localStorage.setItem('computed_cash_in_bank', String(bankBalance));
+  }, [cashInHand, bankBalance, startCash, startBank]);
 
   const recentSales: any[] = (recentSalesData?.data as any)?.sales || (recentSalesData as any)?.sales || recentSalesData?.data || [];
   const recentExpenses: any[] = (recentExpData?.data as any)?.expenses || (recentExpData as any)?.expenses || recentExpData?.data || [];
@@ -277,6 +286,32 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      {/* Trial / Subscription banners */}
+      {isTrialExpired && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+            <p className="text-sm font-semibold text-red-700">Your free trial has ended. Subscribe to continue using EasePay.</p>
+          </div>
+          <Link href="/dashboard/settings/subscription" className="text-xs font-bold text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            Subscribe
+          </Link>
+        </div>
+      )}
+      {!isTrialExpired && trialDaysLeft !== null && trialDaysLeft <= 5 && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+            <p className="text-sm font-semibold text-amber-700">
+              {trialDaysLeft === 0 ? 'Your free trial ends today.' : `${trialDaysLeft} day${trialDaysLeft !== 1 ? 's' : ''} left in your free trial.`}
+            </p>
+          </div>
+          <Link href="/dashboard/settings/subscription" className="text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            Upgrade
+          </Link>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div className="bg-[#050A30] rounded-2xl p-5 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8" />

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 
 
 const pageTitles: Record<string, string> = {
@@ -65,6 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      <OfflineBanner />
     </div>
   );
 }

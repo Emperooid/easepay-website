@@ -11,6 +11,9 @@ import {
   Loader2, TrendingUp, TrendingDown, ShoppingCart, Receipt,
   Package, DollarSign, AlertTriangle, CheckCircle, RefreshCw,
 } from 'lucide-react';
+import { useSubscription } from '@/context/SubscriptionContext';
+import Link from 'next/link';
+import { Lock } from 'lucide-react';
 
 function HealthGauge({ score }: { score: number }) {
   const size = 160;
@@ -41,6 +44,7 @@ function HealthGauge({ score }: { score: number }) {
 }
 
 export default function BusinessHealthPage() {
+  const { can, isLoaded } = useSubscription();
   const [scoreData, setScoreData] = useState<any>(null);
   const [localLoading, setLocalLoading] = useState(true);
 
@@ -189,6 +193,24 @@ export default function BusinessHealthPage() {
 
   if (localLoading || creditLoading) {
     return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-gray-300" size={32} /></div>;
+  }
+
+  if (isLoaded && !can('businessHealth')) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[420px] text-center px-4">
+        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <Lock size={26} className="text-gray-400" />
+        </div>
+        <h2 className="text-base font-bold text-gray-900 mb-1.5">Business Health Score</h2>
+        <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-5">
+          Business Health Score is available on the Basic and Business plans.
+        </p>
+        <Link href="/dashboard/settings/subscription"
+          className="px-5 py-2.5 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors">
+          Upgrade Now
+        </Link>
+      </div>
+    );
   }
 
   return (

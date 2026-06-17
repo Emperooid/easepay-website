@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { ChevronLeft, Eye, EyeOff, Lock, Loader2, CheckCircle2, Shield } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
 const BASE_URL = 'https://easepay-backend.onrender.com/api';
 
@@ -13,6 +15,7 @@ function getToken() {
 }
 
 export default function ChangePinPage() {
+  const { isOwner, can } = usePermissions();
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -24,16 +27,15 @@ export default function ChangePinPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPin.length < 4) { toast.error('PIN must be at least 4 digits'); return; }
-    if (newPin !== confirmPin) { toast.error('New PINs do not match'); return; }
-    if (!/^\d+$/.test(newPin)) { toast.error('PIN must contain only digits'); return; }
+    if (currentPin.length < 4 || newPin.length < 4) { toast.error('Your PIN must be exactly 4 digits long.'); return; }
+    if (newPin !== confirmPin) { toast.error("The new PIN and confirmation PIN are different. Please try again."); return; }
 
     setLoading(true);
     try {
       const res = await fetch(`${BASE_URL}/auth/update-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ currentPin, newPin, confirmPin }),
+        body: JSON.stringify({ oldPin: currentPin, newPin }),
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.message || 'Failed to update PIN'); return; }
@@ -78,6 +80,10 @@ export default function ChangePinPage() {
       </div>
     </div>
   );
+
+  if (!isOwner && !can('change_pin')) {
+    return <AccessRestricted message="You don't have permission to change your PIN." />;
+  }
 
   return (
     <div className="max-w-md space-y-5 animate-in fade-in duration-200">

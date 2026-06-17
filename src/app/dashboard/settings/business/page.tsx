@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBusinessProfile, updateBusinessProfile, getCurrentUser } from '@/services/apiService';
 import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Loader2, ChevronLeft, ChevronRight, Camera,
   Mail, Building2, Phone, MapPin, FileText, BookOpen, ShieldCheck, Trash2, X,
@@ -75,6 +76,8 @@ const FIELD_META: { key: string; label: string; icon: any; multiline?: boolean }
 
 export default function BusinessProfilePage() {
   const { user, setUser } = useAuth();
+  const { isOwner, can } = usePermissions();
+  const canEdit = isOwner || can('manage_business');
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -203,25 +206,29 @@ export default function BusinessProfilePage() {
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }} />
 
-          <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="relative w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden mb-2 hover:opacity-90 transition-opacity">
+          <button onClick={() => canEdit && fileRef.current?.click()} disabled={uploading || !canEdit}
+            className={`relative w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden mb-2 transition-opacity ${canEdit ? 'hover:opacity-90' : 'cursor-default'}`}>
             {details.logo ? (
               <img src={details.logo} alt="Logo" className="w-full h-full object-cover" />
             ) : (
               <span className="text-2xl font-semibold text-gray-500">{getInitials(details.businessName)}</span>
             )}
-            <div className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center border-2 border-white">
-              {uploading
-                ? <Loader2 size={11} className="animate-spin text-white" />
-                : <Camera size={11} className="text-white" />
-              }
-            </div>
+            {canEdit && (
+              <div className="absolute bottom-0 right-0 w-7 h-7 bg-gray-900 rounded-full flex items-center justify-center border-2 border-white">
+                {uploading
+                  ? <Loader2 size={11} className="animate-spin text-white" />
+                  : <Camera size={11} className="text-white" />
+                }
+              </div>
+            )}
           </button>
 
-          <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="text-sm text-blue-500 font-medium hover:text-blue-700 transition-colors">
-            {uploading ? 'Uploading…' : 'Upload Logo for Invoices'}
-          </button>
+          {canEdit && (
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="text-sm text-blue-500 font-medium hover:text-blue-700 transition-colors">
+              {uploading ? 'Uploading…' : 'Upload Logo for Invoices'}
+            </button>
+          )}
 
           {details.businessName && (
             <p className="mt-3 text-lg font-semibold text-gray-900">{details.businessName}</p>
@@ -234,8 +241,8 @@ export default function BusinessProfilePage() {
         {/* ── Field List (click-to-edit like mobile) ── */}
         <div className="divide-y divide-gray-50">
           {FIELD_META.map(({ key, label, icon: Icon }) => (
-            <button key={key} onClick={() => openEdit(key)}
-              className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left">
+            <button key={key} onClick={() => canEdit && openEdit(key)} disabled={!canEdit}
+              className={`w-full flex items-center justify-between px-5 py-4 transition-colors text-left ${canEdit ? 'hover:bg-gray-50' : 'cursor-default'}`}>
               <div className="flex items-center gap-3 min-w-0">
                 <Icon size={20} className="text-gray-400 flex-shrink-0" />
                 <div className="min-w-0">
@@ -245,7 +252,7 @@ export default function BusinessProfilePage() {
                   </p>
                 </div>
               </div>
-              <ChevronRight size={16} className="text-gray-300 flex-shrink-0 ml-3" />
+              {canEdit && <ChevronRight size={16} className="text-gray-300 flex-shrink-0 ml-3" />}
             </button>
           ))}
         </div>

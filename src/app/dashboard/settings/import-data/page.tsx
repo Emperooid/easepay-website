@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
 // ── Exact same HEADER_ALIASES as mobile ──────────────────────────────────────
 const HEADER_ALIASES: Record<string, string> = {
@@ -112,6 +114,7 @@ const TEMPLATE_CSV =
   'Sugar 1kg,Grains,800,200,600,pack,,';
 
 export default function ImportDataPage() {
+  const { isOwner, can } = usePermissions();
   const [screen,           setScreen]           = useState<Screen>('idle');
   const [fileName,         setFileName]         = useState('');
   const [parsedItems,      setParsedItems]      = useState<ParsedItem[]>([]);
@@ -408,6 +411,10 @@ export default function ImportDataPage() {
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
     </div>
   );
+
+  if (!isOwner && !can('import_data')) {
+    return <AccessRestricted message="You don't have permission to import data." />;
+  }
 
   // ── IDLE ─────────────────────────────────────────────────────────────────
   return (

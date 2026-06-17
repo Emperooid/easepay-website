@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { QueryProvider } from '@/components/QueryProvider';
 import { ToastProvider } from '@/components/ui/Toast';
+import { SubscriptionProvider } from '@/context/SubscriptionContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,8 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} h-full bg-gray-50`} suppressHydrationWarning>
         <QueryProvider>
           <AuthProvider>
-            <ToastProvider />
-            {children}
+            <SubscriptionProvider>
+              <ToastProvider />
+              {children}
+            </SubscriptionProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

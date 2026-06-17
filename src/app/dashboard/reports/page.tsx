@@ -15,12 +15,17 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AccessRestricted } from '@/components/ui/AccessRestricted';
+import { useSubscription } from '@/context/SubscriptionContext';
 
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 const SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default function ReportsPage() {
+  const { isOwner, can } = usePermissions();
+  const { can: canSub } = useSubscription();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());   // 0-indexed
   const [selectedYear, setSelectedYear]  = useState(now.getFullYear());
@@ -198,6 +203,8 @@ export default function ReportsPage() {
 
   // ── CSV export ─────────────────────────────────────────────────────────────
   const exportCSV = () => {
+    if (!isOwner && !can('export_data')) { toast.error('You do not have permission to export reports.'); return; }
+    if (!canSub('csvExport')) { toast.error('CSV export is available on Basic and Business plans. Please upgrade.'); return; }
     if (!allTransactions.length) { toast.error('No data to export'); return; }
     const rows = [
       ['Date', 'Type', 'Name', 'Amount'],
@@ -230,6 +237,10 @@ export default function ReportsPage() {
   };
 
   const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
+
+  if (!isOwner && !can('view_reports')) {
+    return <AccessRestricted message="You don't have permission to view reports." />;
+  }
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
