@@ -463,11 +463,28 @@ export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Bl
     ? bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, '')
     : '';
 
-  // Wrapper must be at top:0 left:0 in the viewport — browsers don't render off-screen elements
-  // opacity:0.001 makes it invisible without affecting layout or image loading
+  // ── Loading overlay ─────────────────────────────────────────────────────────
+  // Covers the full page while we render — hides both the 794px render container
+  // and the brief DOM changes html2canvas makes during capture (which otherwise
+  // cause the UI to visually shrink/jump on mobile).
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:2147483647;background:rgba(255,255,255,0.97);' +
+    'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;';
+  overlay.innerHTML =
+    '<div style="width:44px;height:44px;border:4px solid #E5E7EB;border-top-color:#050A30;' +
+    'border-radius:50%;animation:_pdf_spin 0.75s linear infinite;"></div>' +
+    '<p style="font-family:system-ui,sans-serif;font-size:15px;font-weight:600;color:#050A30;margin:0;">' +
+    'Generating PDF…</p>' +
+    '<style>@keyframes _pdf_spin{to{transform:rotate(360deg);}}</style>';
+  document.body.appendChild(overlay);
+
+  // ── Render container ─────────────────────────────────────────────────────────
+  // Must be at top:0 left:0 (in viewport) so the browser renders it fully.
+  // Hidden behind the overlay (z-index one below) so user only sees the spinner.
   const wrapper = document.createElement('div');
   wrapper.style.cssText =
-    'position:fixed;top:0;left:0;width:794px;z-index:99999;background:#fff;pointer-events:none;opacity:0.001;';
+    'position:fixed;top:0;left:0;width:794px;z-index:2147483646;background:#fff;pointer-events:none;opacity:0.001;';
 
   // Inject extracted styles (so table borders, etc. apply)
   const styleEl = document.createElement('style');
@@ -532,6 +549,7 @@ export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Bl
     return pdf.output('blob');
   } finally {
     document.body.removeChild(wrapper);
+    document.body.removeChild(overlay);
   }
 }
 
