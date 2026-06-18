@@ -468,6 +468,7 @@ export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Bl
   // and the brief DOM changes html2canvas makes during capture (which otherwise
   // cause the UI to visually shrink/jump on mobile).
   const overlay = document.createElement('div');
+  overlay.setAttribute('data-pdf-overlay', '1'); // onclone removes this from the clone
   overlay.style.cssText =
     'position:fixed;inset:0;z-index:2147483647;background:rgba(255,255,255,0.97);' +
     'display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;';
@@ -525,6 +526,13 @@ export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Bl
       backgroundColor: '#ffffff',
       logging: false,
       windowWidth: 794,
+      onclone: (_clonedDoc: Document, clonedEl: HTMLElement) => {
+        // Remove the loading overlay from the clone — it sits above the wrapper in z-index,
+        // so without this html2canvas captures the white overlay instead of invoice content.
+        _clonedDoc.querySelectorAll('[data-pdf-overlay]').forEach(n => n.remove());
+        // Restore full opacity in the clone (live DOM uses 0.001 to stay hidden from user).
+        clonedEl.style.opacity = '1';
+      },
     });
 
     // A4 dimensions in mm — most reliable across jsPDF versions
