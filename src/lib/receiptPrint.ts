@@ -497,39 +497,37 @@ export async function downloadInvoicePdf(data: InvoicePrintData, filename?: stri
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-// Shares invoice PDF via Web Share API (mobile browsers) or falls back to download + WhatsApp link
+// Shares invoice PDF — Web Share API on mobile, straight download on desktop.
+// Returns 'shared' when the OS share sheet handled it, 'downloaded' when PDF was saved locally.
 export async function shareInvoicePdfViaWhatsApp(
   data: InvoicePrintData,
-  fallbackMsg: string,
   filename?: string,
-): Promise<void> {
+): Promise<'shared' | 'downloaded'> {
   const blob = await generateInvoicePdfBlob(data);
   const pdfName = filename || `Invoice-${data.invoiceNo || Date.now()}.pdf`;
   const file = new File([blob], pdfName, { type: 'application/pdf' });
 
-  // Mobile browsers (Chrome Android, Safari iOS) support file sharing
+  // Mobile browsers (Chrome Android, Safari iOS) — open native share sheet
   if (typeof navigator !== 'undefined' && 'share' in navigator) {
     try {
       const nav = navigator as any;
       if (nav.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: pdfName });
-        return;
+        return 'shared';
       }
     } catch (e: any) {
-      if (e?.name !== 'AbortError') { /* fall through */ }
-      else return; // user cancelled
+      if (e?.name === 'AbortError') return 'shared'; // user cancelled share sheet
     }
   }
 
-  // Desktop fallback: download the PDF, then open WhatsApp with a text message
+  // Desktop — download the PDF file; calling code handles any messaging
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: pdfName });
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  // Small delay so the download starts before WhatsApp opens
-  setTimeout(() => openWhatsApp(fallbackMsg), 1200);
+  return 'downloaded';
 }
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────

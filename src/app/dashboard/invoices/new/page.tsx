@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { openWhatsApp, buildInvoiceWhatsAppMessage, openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
+import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -327,21 +327,16 @@ export default function NewInvoicePage() {
     const handleA4Print = () => openInvoicePrintWindow(a4PrintData);
 
     const handleWhatsApp = async () => {
-      const fallbackMsg = buildInvoiceWhatsAppMessage({
-        businessName,
-        customerName: form.customerName || undefined,
-        amount: grandTotal,
-        invoiceUrl: shareUrl || `${window.location.origin}/dashboard/invoices`,
-        invoiceNo: invNum,
-        dueDate: form.dueDate || undefined,
-      });
-      const t = toast.loading('Preparing PDF...');
+      const t = toast.loading('Generating PDF...');
       try {
-        await shareInvoicePdfViaWhatsApp(a4PrintData, fallbackMsg, `Invoice-${invNum}.pdf`);
-        toast.dismiss(t);
+        const result = await shareInvoicePdfViaWhatsApp(a4PrintData, `Invoice-${invNum}.pdf`);
+        if (result === 'downloaded') {
+          toast.success('PDF saved! Open WhatsApp and attach the file to share it.', { id: t, duration: 5000 });
+        } else {
+          toast.dismiss(t);
+        }
       } catch {
-        toast.dismiss(t);
-        openWhatsApp(fallbackMsg);
+        toast.error('Could not generate PDF', { id: t });
       }
     };
 

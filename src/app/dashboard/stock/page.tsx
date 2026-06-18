@@ -15,6 +15,23 @@ const CATEGORIES = [
   'Books & Stationery', 'Liquid', 'Other',
 ];
 const STATUS_OPTIONS = ['Available', 'Out of Stock', 'Low Stock', 'Draft'];
+const UNIT_OPTIONS = [
+  { label: 'Pieces (Pcs)', value: 'Pcs' },
+  { label: 'Kilograms (Kg)', value: 'Kg' },
+  { label: 'Grams (g)', value: 'g' },
+  { label: 'Liters (L)', value: 'L' },
+  { label: 'Milliliters (ml)', value: 'ml' },
+  { label: 'Meters (m)', value: 'm' },
+  { label: 'Bags', value: 'Bags' },
+  { label: 'Cartons', value: 'Cartons' },
+  { label: 'Dozens', value: 'Dozens' },
+  { label: 'Packs', value: 'Packs' },
+  { label: 'Rolls', value: 'Rolls' },
+  { label: 'Bottles', value: 'Bottles' },
+  { label: 'Cans', value: 'Cans' },
+  { label: 'Boxes', value: 'Boxes' },
+  { label: 'Pairs', value: 'Pairs' },
+];
 const ITEMS_PER_PAGE = 10;
 
 type ModalMode = 'add' | 'edit' | null;
@@ -28,9 +45,9 @@ function getProductStatus(p: any): string {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    Available: 'bg-green-50 text-green-600 border border-green-200',
-    'Out of Stock': 'bg-red-50 text-red-500 border border-red-200',
-    'Low Stock': 'bg-orange-50 text-orange-500 border border-orange-200',
+    Available: 'bg-blue-50 text-blue-600 border border-blue-200',
+    'Out of Stock': 'bg-red-50 text-red-600 border border-red-200',
+    'Low Stock': 'bg-yellow-50 text-yellow-700 border border-yellow-200',
     Draft: 'bg-gray-100 text-gray-600 border border-gray-300',
   };
   return (
@@ -48,7 +65,7 @@ export default function StockPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [form, setForm] = useState({
-    name: '', category: '', unitPrice: '', quantity: '',
+    name: '', category: '', unitPrice: '', costPrice: '', quantity: '',
     kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5',
   });
   const qc = useQueryClient();
@@ -85,7 +102,7 @@ export default function StockPage() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', category: '', unitPrice: '', quantity: '', kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5' });
+    setForm({ name: '', category: '', unitPrice: '', costPrice: '', quantity: '', kg: 'Pcs', description: '', barcode: '', status: '', lowStockThreshold: '5' });
     setModal('add');
   };
 
@@ -93,8 +110,9 @@ export default function StockPage() {
     setEditItem(p);
     setForm({
       name: p.name || '', category: p.category || '',
-      unitPrice: String(p.unitPrice || ''), quantity: String(p.quantity || ''),
-      kg: p.unit || '', description: p.description || '',
+      unitPrice: String(p.unitPrice || ''), costPrice: String(p.costPrice || ''),
+      quantity: String(p.quantity || ''),
+      kg: p.unit || 'Pcs', description: p.description || '',
       barcode: p.barcode || '', status: p.status || '',
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
     });
@@ -110,7 +128,7 @@ export default function StockPage() {
       category: form.category,
       unitPrice: parseFloat(form.unitPrice) || 0,
       price:     parseFloat(form.unitPrice) || 0,   // backend alias
-      costPrice: 0,
+      costPrice: parseFloat(form.costPrice) || 0,
       quantity:  qty,
       stock:     qty,                                // backend compatibility alias (same as mobile)
       unit: form.kg || 'pcs',
@@ -363,7 +381,7 @@ export default function StockPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Price (₦)</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Selling Price (₦)</label>
                   <input
                     type="number"
                     value={form.unitPrice}
@@ -373,6 +391,20 @@ export default function StockPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Cost Price (₦)</label>
+                  <input
+                    type="number"
+                    value={form.costPrice}
+                    onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))}
+                    placeholder="0.00"
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Quantity</label>
                   <input
@@ -384,19 +416,22 @@ export default function StockPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Unit of Measurement</label>
+                  <div className="relative">
+                    <select
+                      value={form.kg}
+                      onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
+                    >
+                      {UNIT_OPTIONS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                    </select>
+                    <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Unit (optional)</label>
-                  <input
-                    type="text"
-                    value={form.kg}
-                    onChange={e => setForm(f => ({ ...f, kg: e.target.value }))}
-                    placeholder="kg, pcs, bag..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Product Code</label>
                   <input
@@ -404,6 +439,17 @@ export default function StockPage() {
                     value={form.barcode}
                     onChange={e => setForm(f => ({ ...f, barcode: e.target.value }))}
                     placeholder="SG-001"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Low Stock Alert</label>
+                  <input
+                    type="number"
+                    value={form.lowStockThreshold}
+                    onChange={e => setForm(f => ({ ...f, lowStockThreshold: e.target.value }))}
+                    placeholder="5"
+                    min="0"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -420,18 +466,6 @@ export default function StockPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Low Stock Alert (qty)</label>
-                <input
-                  type="number"
-                  value={form.lowStockThreshold}
-                  onChange={e => setForm(f => ({ ...f, lowStockThreshold: e.target.value }))}
-                  placeholder="5"
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-gray-400">Show "Low Stock" badge when quantity falls below this</p>
-              </div>
             </div>
 
             {/* Modal Footer */}
