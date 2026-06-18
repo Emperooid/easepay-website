@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getSale, getExpense, getInvoice,
   deleteSale, deleteExpense, deleteInvoice,
-  updateInvoiceStatus, sendInvoice, getInvoiceDownloadLink,
+  updateInvoiceStatus, sendInvoice,
 } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge, statusBadge } from '@/components/ui/Badge';
@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 import { useAuth } from '@/context/AuthContext';
-import { openWhatsApp, buildSaleWhatsAppMessage, buildInvoiceWhatsAppMessage, openInvoicePrintWindow } from '@/lib/receiptPrint';
+import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp, type InvoicePrintData } from '@/lib/receiptPrint';
 import ThermalPrintModal, { type ThermalReceiptData } from '@/components/ui/ThermalPrintModal';
 
 const TYPE_CONFIG: Record<string, {
@@ -97,7 +97,7 @@ export default function TransactionDetailPage() {
       .catch(() => toast.error('Could not copy link'));
   };
 
-  const handleA4Print = (item: any) => {
+  const buildPdfData = (item: any): InvoicePrintData => {
     const businessName = (user as any)?.businessName || 'My Business';
     const lineItems = (item.items || item.saleItems || item.invoiceItems || []).map((li: any) => ({
       name: li.name || li.productName || li.description || 'Item',
@@ -108,12 +108,13 @@ export default function TransactionDetailPage() {
     }));
     const grandTotal = Number(item.grandTotal || item.amount || item.total || 0);
     const subtotal = Number(item.subtotal || item.subTotal || grandTotal);
-    openInvoicePrintWindow({
+    const publicToken = item.publicToken;
+    return {
       businessName,
       invoiceNo: item.invoiceNumber || item.saleNumber || item.referenceNumber,
-      date: item.invoiceDate || item.createdAt
-        ? new Date(item.invoiceDate || item.createdAt).toLocaleDateString('en-GB') : undefined,
-      dueDate: item.dueDate ? new Date(item.dueDate).toLocaleDateString('en-GB') : undefined,
+      date: (item.invoiceDate || item.createdAt) ? new Date(item.invoiceDate || item.createdAt).toISOString() : new Date().toISOString(),
+      dueDate: item.dueDate ? new Date(item.dueDate).toISOString() : undefined,
+      publicToken: publicToken || undefined,
       customerName: item.customerName || item.customer?.name || undefined,
       customerEmail: item.customerEmail || item.customer?.email || undefined,
       customerPhone: item.customerPhone || item.customer?.phone || undefined,
@@ -129,17 +130,21 @@ export default function TransactionDetailPage() {
       terms: item.terms || undefined,
       type: type?.toLowerCase() === 'invoice' ? 'INVOICE'
         : type?.toLowerCase() === 'expense' ? 'EXPENSE' : 'SALE',
-    });
+    };
   };
 
-  const handleDownloadPDF = async () => {
+  const handleA4Print = (item: any) => openInvoicePrintWindow(buildPdfData(item));
+
+  const handleDownloadPDF = async (item: any) => {
+    const pdfData = buildPdfData(item);
+    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || id}.pdf`;
+    const t = toast.loading('Generating PDF...');
     try {
-      const res = await getInvoiceDownloadLink(id);
-      const url = (res?.data as any)?.url || (res as any)?.url;
-      if (url) window.open(url, '_blank');
-      else toast.error('Download link not available');
+      await downloadInvoicePdf(pdfData, filename);
+      toast.success('PDF downloaded!', { id: t });
     } catch {
-      toast.error('Failed to get download link');
+      toast.error('Could not generate PDF', { id: t });
+      openInvoicePrintWindow(pdfData);
     }
   };
 
@@ -173,18 +178,20 @@ export default function TransactionDetailPage() {
     setShowThermalModal(true);
   };
 
-  const handleWhatsApp = (item: any) => {
-    const businessName = (user as any)?.businessName || 'My Business';
-    const pageUrl = window.location.href;
-    const publicUrl = item.shareUrl || (item.publicToken ? `https://easepay-backend.onrender.com/i/${item.publicToken}` : pageUrl);
-    const amount = Number(item.grandTotal || item.amount || item.total || 0);
-    let msg: string;
-    if (type?.toLowerCase() === 'invoice') {
-      msg = buildInvoiceWhatsAppMessage({ businessName, customerName: item.customerName || item.customer?.name, amount, invoiceUrl: publicUrl, invoiceNo: item.invoiceNumber, dueDate: item.dueDate ? new Date(item.dueDate).toLocaleDateString('en-GB') : undefined });
-    } else {
-      msg = buildSaleWhatsAppMessage({ businessName, customerName: item.customerName, amount, receiptUrl: pageUrl, invoiceNo: item.invoiceNumber || item.saleNumber });
+  const handleWhatsApp = async (item: any) => {
+    const pdfData = buildPdfData(item);
+    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || id}.pdf`;
+    const t = toast.loading('Generating PDF...');
+    try {
+      const result = await shareInvoicePdfViaWhatsApp(pdfData, filename);
+      if (result === 'downloaded') {
+        toast.success('PDF saved! Open WhatsApp and attach the file to share it.', { id: t, duration: 5000 });
+      } else {
+        toast.dismiss(t);
+      }
+    } catch {
+      toast.error('Could not generate PDF', { id: t });
     }
-    openWhatsApp(msg);
   };
 
   if (!isOwner && !can('view_transactions')) {
@@ -370,7 +377,7 @@ export default function TransactionDetailPage() {
         {/* Download PDF — invoices */}
         {isInvoice && (
           <button
-            onClick={handleDownloadPDF}
+            onClick={() => handleDownloadPDF(item)}
             className="w-full flex items-center justify-center gap-2.5 py-4 bg-[#050A30] text-white rounded-2xl text-sm font-bold hover:bg-[#0a1460] transition-colors"
           >
             <Download size={18} /> Download PDF
