@@ -442,44 +442,96 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
 
 // Generates a real PDF blob from the invoice using html2canvas + jsPDF (mirrors mobile Print.printToFileAsync)
 export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Blob> {
-  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+  const [jspdfMod, h2cMod] = await Promise.all([
     import('jspdf'),
     import('html2canvas'),
   ]);
+  const { jsPDF } = jspdfMod;
+  const html2canvas = h2cMod.default;
 
-  const html = buildInvoicePageHtml(data, false);
+  const htmlPage = buildInvoicePageHtml(data, false);
 
-  // Render in a hidden off-screen container at A4-equivalent pixel width
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;z-index:-9999;font-family:Arial,sans-serif;font-size:13px;color:#111827;line-height:1.6;';
-  // Inject only the .doc content (strip full page wrapper to avoid CSS conflicts)
-  const bodyMatch = html.match(/<body>([\s\S]*?)<\/body>/i);
-  container.innerHTML = bodyMatch ? bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, '') : html;
+  // Extract <style> block — keep only base rules, strip @media queries that break pdf rendering
+  const styleMatch = htmlPage.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+  const baseStyles = styleMatch
+    ? styleMatch[1].replace(/@media\s[^{]+\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, '')
+    : '';
 
-  // Apply doc styles inline so html2canvas picks them up
-  const docEl = container.querySelector('.doc') as HTMLElement | null;
+  // Extract <body> content
+  const bodyMatch = htmlPage.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyContent = bodyMatch
+    ? bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, '')
+    : '';
+
+  // Wrapper must be at top:0 left:0 in the viewport — browsers don't render off-screen elements
+  // opacity:0.001 makes it invisible without affecting layout or image loading
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText =
+    'position:fixed;top:0;left:0;width:794px;z-index:99999;background:#fff;pointer-events:none;opacity:0.001;';
+
+  // Inject extracted styles (so table borders, etc. apply)
+  const styleEl = document.createElement('style');
+  styleEl.textContent = baseStyles;
+  wrapper.appendChild(styleEl);
+
+  // Inject body content
+  const contentDiv = document.createElement('div');
+  contentDiv.innerHTML = bodyContent;
+
+  // Override .doc class — remove screen-only decorations that don't belong in PDF
+  const docEl = contentDiv.querySelector('.doc') as HTMLElement | null;
   if (docEl) {
-    docEl.style.cssText = 'padding:48px 56px;background:#fff;max-width:794px;';
+    docEl.style.cssText = 'padding:48px 56px;background:#fff;margin:0;box-shadow:none;border-radius:0;';
   }
 
-  document.body.appendChild(container);
+  wrapper.appendChild(contentDiv);
+  document.body.appendChild(wrapper);
+
+  // Wait for images (logo, QR code) to finish loading
+  const imgs = Array.from(wrapper.querySelectorAll('img'));
+  await Promise.all(
+    imgs.map(img =>
+      img.complete
+        ? Promise.resolve()
+        : new Promise<void>(res => { img.onload = () => res(); img.onerror = () => res(); })
+    )
+  );
+
+  // Brief settle time for layout engine
+  await new Promise(r => setTimeout(r, 200));
+
   try {
-    const canvas = await html2canvas(container, {
+    const canvas = await html2canvas(wrapper, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
-      width: 794,
+      windowWidth: 794,
     });
 
-    const imgW = canvas.width / 2;   // px at 1x
-    const imgH = canvas.height / 2;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [imgW, imgH] });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+    // A4 dimensions in mm — most reliable across jsPDF versions
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();   // 210 mm
+    const pageH = pdf.internal.pageSize.getHeight();  // 297 mm
+    const imgH  = (canvas.height * pageW) / canvas.width; // proportional height in mm
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+    if (imgH <= pageH) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageW, imgH);
+    } else {
+      // Multi-page: slice at each page boundary
+      let yMm = 0;
+      while (yMm < imgH) {
+        if (yMm > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -yMm, pageW, imgH);
+        yMm += pageH;
+      }
+    }
+
     return pdf.output('blob');
   } finally {
-    document.body.removeChild(container);
+    document.body.removeChild(wrapper);
   }
 }
 
