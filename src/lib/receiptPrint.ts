@@ -255,8 +255,34 @@ export interface InvoicePrintData {
   notes?: string;
   terms?: string;
   accountDetails?: string;
+  // Template customisation (from localStorage invoiceTemplateSettings)
+  accentColor?: string;
+  signatureUri?: string;
   // Type
   type?: 'INVOICE' | 'RECEIPT' | 'SALE' | 'EXPENSE';
+}
+
+// Reads invoice template settings from localStorage — same key pattern as mobile app.
+// Safe to call on server (returns defaults) or before the user object is available.
+export function readInvoiceTemplateSettings(user: any): {
+  accentColor: string; footerText: string;
+  termsAndConditions: string; accountDetails: string; signatureUri: string;
+} {
+  const defaults = { accentColor: '#050A30', footerText: '', termsAndConditions: '', accountDetails: '', signatureUri: '' };
+  if (typeof window === 'undefined') return defaults;
+  try {
+    const uid = user?.id || user?.userId || user?.email || 'default';
+    const raw = localStorage.getItem(`invoiceTemplateSettings_${uid}`);
+    if (!raw) return defaults;
+    const s = JSON.parse(raw);
+    return {
+      accentColor:        s.accentColor        || defaults.accentColor,
+      footerText:         s.footerText         || defaults.footerText,
+      termsAndConditions: s.termsAndConditions || defaults.termsAndConditions,
+      accountDetails:     s.accountDetails     || defaults.accountDetails,
+      signatureUri:       s.signatureUri       || defaults.signatureUri,
+    };
+  } catch { return defaults; }
 }
 
 function getStatusStyle(status: string): string {
@@ -280,10 +306,10 @@ function buildInvoicePageHtml(data: InvoicePrintData, autoprint = true): string 
     customerName, customerEmail, customerPhone, customerAddress,
     paymentMethod, status, items, subtotal,
     vatAmount = 0, discountAmount = 0, grandTotal, amountPaid,
-    notes, terms, accountDetails, type = 'INVOICE',
+    notes, terms, accountDetails, accentColor, signatureUri, type = 'INVOICE',
   } = data;
 
-  const accent = '#050A30';
+  const accent = accentColor || '#050A30';
   const fmt = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const dateStr = date ? new Date(date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
   const dueDateStr = dueDate ? new Date(dueDate).toLocaleDateString('en-GB') : '';
@@ -400,13 +426,16 @@ function buildInvoicePageHtml(data: InvoicePrintData, autoprint = true): string 
 
   <!-- FOOTER -->
   <div style="border-top:1px solid #E5E7EB;padding-top:24px;font-size:11px;color:#6B7280;">
-    ${accountDetails ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Bank / Account Details</strong>${accountDetails.replace(/\n/g,'<br/>')}</div>` : ''}
-    ${terms ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Terms &amp; Conditions</strong>${terms.replace(/\n/g,'<br/>')}</div>` : ''}
-    <div style="margin-bottom:14px;">
-      <strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Note</strong>
-      ${notes || 'Thank you for your business. Please make payment by the due date.'}
-    </div>
-    <p>This is a computer-generated ${(docLabel || 'invoice').toLowerCase()}. All transactions are final unless otherwise stated.</p>
+    ${accountDetails ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Bank / Account Details</strong><p style="margin:0;white-space:pre-line;">${accountDetails.replace(/\n/g,'<br/>')}</p></div>` : ''}
+    ${terms ? `<div style="margin-bottom:18px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Terms &amp; Conditions</strong><p style="margin:0;white-space:pre-line;">${terms.replace(/\n/g,'<br/>')}</p></div>` : ''}
+    ${notes ? `<div style="margin-bottom:14px;"><strong style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Note</strong><p style="margin:0;">${notes}</p></div>` : ''}
+    ${signatureUri ? `
+    <div style="margin-bottom:18px;border-top:1px solid #E5E7EB;padding-top:16px;">
+      <strong style="font-size:11px;color:#374151;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:8px;">Authorized Signature</strong>
+      <img src="${signatureUri}" crossorigin="anonymous" style="max-height:70px;max-width:220px;object-fit:contain;display:block;margin-bottom:6px;" />
+      <div style="border-top:1px solid #9CA3AF;width:220px;"></div>
+    </div>` : ''}
+    <p style="margin-top:8px;">This is a computer-generated ${(docLabel || 'invoice').toLowerCase()}. All transactions are final unless otherwise stated.</p>
     <span style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border-radius:20px;padding:5px 14px;font-size:10px;font-weight:700;letter-spacing:0.5px;margin-top:12px;">&#10003;&nbsp; Verified &bull; Secured by EasePay</span>
   </div>`;
 
@@ -440,8 +469,37 @@ export function openInvoicePrintWindow(data: InvoicePrintData): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// Converts an http(s) URL to a base64 data URL via fetch.
+// Eliminates CORS / timing issues when html2canvas renders remote images.
+async function urlToDataUrl(url: string): Promise<string> {
+  try {
+    const resp = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+    if (!resp.ok) return url;
+    const blob = await resp.blob();
+    return await new Promise<string>((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result as string);
+      reader.onerror = () => res(url); // fallback to original on error
+      reader.readAsDataURL(blob);
+    });
+  } catch { return url; }
+}
+
 // Generates a real PDF blob from the invoice using html2canvas + jsPDF (mirrors mobile Print.printToFileAsync)
 export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Blob> {
+  // Pre-convert remote image URLs to data URLs so html2canvas never makes
+  // a cross-origin request (eliminates CORS errors and load-timing races).
+  let pdfData = data;
+  const imageConversions: Promise<void>[] = [];
+  let logoDataUrl = data.businessLogo;
+  let sigDataUrl  = data.signatureUri;
+  if (logoDataUrl?.startsWith('http')) imageConversions.push(urlToDataUrl(logoDataUrl).then(u => { logoDataUrl = u; }));
+  if (sigDataUrl?.startsWith('http'))  imageConversions.push(urlToDataUrl(sigDataUrl).then(u => { sigDataUrl  = u; }));
+  if (imageConversions.length) {
+    await Promise.all(imageConversions);
+    pdfData = { ...data, businessLogo: logoDataUrl, signatureUri: sigDataUrl };
+  }
+
   const [jspdfMod, h2cMod] = await Promise.all([
     import('jspdf'),
     import('html2canvas'),
@@ -449,7 +507,7 @@ export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Bl
   const { jsPDF } = jspdfMod;
   const html2canvas = h2cMod.default;
 
-  const htmlPage = buildInvoicePageHtml(data, false);
+  const htmlPage = buildInvoicePageHtml(pdfData, false);
 
   // Extract <style> block — keep only base rules, strip @media queries that break pdf rendering
   const styleMatch = htmlPage.match(/<style[^>]*>([\s\S]*?)<\/style>/i);

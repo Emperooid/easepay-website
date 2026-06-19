@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
+import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp, readInvoiceTemplateSettings } from '@/lib/receiptPrint';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useSubscription } from '@/context/SubscriptionContext';
@@ -276,26 +276,29 @@ export default function NewInvoicePage() {
       notes: form.notes || undefined,
     };
 
-    // Extract business profile — mobile uses: d.logoUrl || d.business?.logoUrl || d.business?.logo
+    // Extract business profile — same pattern as settings/business/page.tsx extractBusinessInfo
     const rawBizData = (bizProfileData as any)?.data || (bizProfileData as any) || {};
-    const biz = rawBizData?.business || rawBizData || {};
-    const bizPhone = biz.phoneNumber || biz.phone || biz.businessPhone || (user as any)?.phone || '';
-    const bizAddress = biz.address || biz.businessAddress || '';
-    const bizEmail = biz.email || biz.businessEmail || (user as any)?.email || '';
-    const bizLogo = rawBizData?.logoUrl || biz.logoUrl || biz.logo || biz.businessLogo || null;
-    const bizRc = biz.rcNumber || biz.rc || biz.rc_number || '';
-    const bizBn = biz.bnNumber || biz.bn || biz.bn_number || '';
-    const bizTin = biz.taxId || biz.tinNumber || biz.tin || biz.taxIdentificationNumber || '';
+    const biz = rawBizData?.business || rawBizData?.businessProfile || rawBizData?.profile || rawBizData || {};
+    const bizLogo    = rawBizData?.logoUrl || biz?.logoUrl || biz?.logo || rawBizData?.logo || null;
+    const bizPhone   = rawBizData?.phone || rawBizData?.phoneNumber || biz?.phone || biz?.phoneNumber || (user as any)?.phone || '';
+    const bizAddress = biz?.address || biz?.businessAddress || rawBizData?.address || '';
+    const bizEmail   = rawBizData?.email || biz?.email || (user as any)?.email || '';
+    const bizRc      = biz?.rcNumber || biz?.rc || rawBizData?.rcNumber || rawBizData?.rc || '';
+    const bizBn      = biz?.bnNumber || biz?.bn || rawBizData?.bnNumber || rawBizData?.bn || '';
+    const bizTin     = biz?.tinNumber || biz?.taxId || rawBizData?.taxId || rawBizData?.tinNumber || '';
+    const tmpl = readInvoiceTemplateSettings(user);
 
     const a4PrintData = {
       businessName,
-      businessPhone: bizPhone || undefined,
+      businessLogo:    bizLogo    || undefined,
+      businessPhone:   bizPhone   || undefined,
       businessAddress: bizAddress || undefined,
-      businessEmail: bizEmail || undefined,
-      businessLogo: bizLogo || undefined,
-      businessRcNumber: bizRc || undefined,
-      businessBnNumber: bizBn || undefined,
-      businessTaxId: bizTin || undefined,
+      businessEmail:   bizEmail   || undefined,
+      businessRcNumber: bizRc     || undefined,
+      businessBnNumber: bizBn     || undefined,
+      businessTaxId:   bizTin     || undefined,
+      accentColor:     tmpl.accentColor,
+      signatureUri:    tmpl.signatureUri || undefined,
       invoiceNo: invNum,
       date: form.invoiceDate,
       dueDate: form.dueDate || undefined,
@@ -319,8 +322,9 @@ export default function NewInvoicePage() {
       grandTotal,
       amountPaid: form.status === 'Partial Payment' && parseFloat(form.partialAmountPaid) > 0
         ? parseFloat(form.partialAmountPaid) : undefined,
-      notes: form.notes || undefined,
-      terms: form.terms || undefined,
+      notes:          form.notes  || tmpl.footerText         || undefined,
+      terms:          form.terms  || tmpl.termsAndConditions || undefined,
+      accountDetails:              tmpl.accountDetails       || undefined,
       type: 'INVOICE' as const,
     };
 

@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 import { useAuth } from '@/context/AuthContext';
-import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp, type InvoicePrintData } from '@/lib/receiptPrint';
+import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp, readInvoiceTemplateSettings, type InvoicePrintData } from '@/lib/receiptPrint';
 import ThermalPrintModal, { type ThermalReceiptData } from '@/components/ui/ThermalPrintModal';
 
 const TYPE_CONFIG: Record<string, {
@@ -106,14 +106,15 @@ export default function TransactionDetailPage() {
   const buildPdfData = (item: any): InvoicePrintData => {
     const businessName = (user as any)?.businessName || 'My Business';
     const rawBiz = (bizProfileData as any)?.data || (bizProfileData as any) || {};
-    const biz = rawBiz?.business || rawBiz || {};
-    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || biz?.businessLogo || null;
-    const bizPhone = biz?.phoneNumber || biz?.phone || biz?.businessPhone || (user as any)?.phone || '';
-    const bizAddress = biz?.address || biz?.businessAddress || '';
-    const bizEmail = biz?.email || biz?.businessEmail || (user as any)?.email || '';
-    const bizRc = biz?.rcNumber || biz?.rc || biz?.rc_number || '';
-    const bizBn = biz?.bnNumber || biz?.bn || biz?.bn_number || '';
-    const bizTin = biz?.taxId || biz?.tinNumber || biz?.tin || biz?.taxIdentificationNumber || '';
+    const biz = rawBiz?.business || rawBiz?.businessProfile || rawBiz?.profile || rawBiz || {};
+    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || rawBiz?.logo || null;
+    const bizPhone = rawBiz?.phone || rawBiz?.phoneNumber || biz?.phone || biz?.phoneNumber || (user as any)?.phone || '';
+    const bizAddress = biz?.address || biz?.businessAddress || rawBiz?.address || '';
+    const bizEmail = rawBiz?.email || biz?.email || (user as any)?.email || '';
+    const bizRc = biz?.rcNumber || biz?.rc || rawBiz?.rcNumber || rawBiz?.rc || '';
+    const bizBn = biz?.bnNumber || biz?.bn || rawBiz?.bnNumber || rawBiz?.bn || '';
+    const bizTin = biz?.tinNumber || biz?.taxId || rawBiz?.taxId || rawBiz?.tinNumber || '';
+    const tmpl = readInvoiceTemplateSettings(user);
 
     const lineItems = (item.items || item.saleItems || item.invoiceItems || []).map((li: any) => ({
       name: li.name || li.productName || li.description || 'Item',
@@ -132,7 +133,9 @@ export default function TransactionDetailPage() {
       businessEmail: bizEmail || undefined,
       businessRcNumber: bizRc || undefined,
       businessBnNumber: bizBn || undefined,
-      businessTaxId: bizTin || undefined,
+      businessTaxId:   bizTin || undefined,
+      accentColor:     tmpl.accentColor,
+      signatureUri:    tmpl.signatureUri || undefined,
       invoiceNo: item.invoiceNumber || item.saleNumber || item.referenceNumber,
       date: (item.invoiceDate || item.createdAt) ? new Date(item.invoiceDate || item.createdAt).toISOString() : new Date().toISOString(),
       dueDate: item.dueDate ? new Date(item.dueDate).toISOString() : undefined,
@@ -148,8 +151,9 @@ export default function TransactionDetailPage() {
       discountAmount: Number(item.discount || item.discountAmount || 0),
       grandTotal,
       amountPaid: item.paidAmount || item.amountPaid || undefined,
-      notes: item.notes || undefined,
-      terms: item.terms || undefined,
+      notes:          item.notes  || tmpl.footerText         || undefined,
+      terms:          item.terms  || tmpl.termsAndConditions || undefined,
+      accountDetails:              tmpl.accountDetails       || undefined,
       type: type?.toLowerCase() === 'invoice' ? 'INVOICE'
         : type?.toLowerCase() === 'expense' ? 'EXPENSE' : 'SALE',
     };

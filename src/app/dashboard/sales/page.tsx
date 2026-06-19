@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, Share2, ExternalLink, Printer, Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp } from '@/lib/receiptPrint';
+import { openInvoicePrintWindow, downloadInvoicePdf, shareInvoicePdfViaWhatsApp, readInvoiceTemplateSettings } from '@/lib/receiptPrint';
 import { useAuth } from '@/context/AuthContext';
 import ThermalPrintModal from '@/components/ui/ThermalPrintModal';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -255,14 +255,15 @@ export default function SalesPage() {
     const receiptUrl = saleId ? `${window.location.origin}/dashboard/transactions/sale/${saleId}` : '';
     const businessName = (user as any)?.businessName || 'My Business';
     const rawBiz = (bizProfileData as any)?.data || (bizProfileData as any) || {};
-    const biz = rawBiz?.business || rawBiz || {};
-    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || biz?.businessLogo || null;
-    const bizPhone = biz?.phoneNumber || biz?.phone || biz?.businessPhone || (user as any)?.phone || '';
-    const bizAddress = biz?.address || biz?.businessAddress || '';
-    const bizEmail = biz?.email || biz?.businessEmail || (user as any)?.email || '';
-    const bizRc = biz?.rcNumber || biz?.rc || biz?.rc_number || '';
-    const bizBn = biz?.bnNumber || biz?.bn || biz?.bn_number || '';
-    const bizTin = biz?.taxId || biz?.tinNumber || biz?.tin || biz?.taxIdentificationNumber || '';
+    const biz = rawBiz?.business || rawBiz?.businessProfile || rawBiz?.profile || rawBiz || {};
+    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || rawBiz?.logo || null;
+    const bizPhone = rawBiz?.phone || rawBiz?.phoneNumber || biz?.phone || biz?.phoneNumber || (user as any)?.phone || '';
+    const bizAddress = biz?.address || biz?.businessAddress || rawBiz?.address || '';
+    const bizEmail = rawBiz?.email || biz?.email || (user as any)?.email || '';
+    const bizRc = biz?.rcNumber || biz?.rc || rawBiz?.rcNumber || rawBiz?.rc || '';
+    const bizBn = biz?.bnNumber || biz?.bn || rawBiz?.bnNumber || rawBiz?.bn || '';
+    const bizTin = biz?.tinNumber || biz?.taxId || rawBiz?.taxId || rawBiz?.tinNumber || '';
+    const tmpl = readInvoiceTemplateSettings(user);
 
     const thermalReceiptData = {
       businessName,
@@ -282,13 +283,15 @@ export default function SalesPage() {
 
     const a4PrintData = {
       businessName,
-      businessLogo: bizLogo || undefined,
-      businessPhone: bizPhone || undefined,
+      businessLogo:    bizLogo    || undefined,
+      businessPhone:   bizPhone   || undefined,
       businessAddress: bizAddress || undefined,
-      businessEmail: bizEmail || undefined,
-      businessRcNumber: bizRc || undefined,
-      businessBnNumber: bizBn || undefined,
-      businessTaxId: bizTin || undefined,
+      businessEmail:   bizEmail   || undefined,
+      businessRcNumber: bizRc     || undefined,
+      businessBnNumber: bizBn     || undefined,
+      businessTaxId:   bizTin     || undefined,
+      accentColor:     tmpl.accentColor,
+      signatureUri:    tmpl.signatureUri || undefined,
       invoiceNo: saleInvNum,
       date: new Date().toISOString(),
       customerName: customerName.trim() || undefined,
@@ -304,6 +307,9 @@ export default function SalesPage() {
       vatAmount: vatEnabled ? vat : 0,
       discountAmount: discount > 0 ? discount : 0,
       grandTotal: total,
+      notes:          tmpl.footerText         || undefined,
+      terms:          tmpl.termsAndConditions || undefined,
+      accountDetails: tmpl.accountDetails     || undefined,
       type: 'SALE' as const,
     };
 
