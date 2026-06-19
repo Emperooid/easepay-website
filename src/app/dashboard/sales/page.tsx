@@ -279,7 +279,9 @@ export default function SalesPage() {
       receiptType: 'RECEIPT' as const,
     };
 
-    const saleInvNum = lastSale?.invoiceNumber || lastSale?.saleNumber;
+    const saleInvNum = lastSale?.invoiceNumber || lastSale?.saleNumber || lastSale?.receiptNumber
+      || lastSale?.referenceNumber || lastSale?.id || lastSale?._id;
+    const salePublicToken = lastSale?.publicToken || undefined;
 
     const a4PrintData = {
       businessName,
@@ -292,7 +294,8 @@ export default function SalesPage() {
       businessTaxId:   bizTin     || undefined,
       accentColor:     tmpl.accentColor,
       signatureUri:    tmpl.signatureUri || undefined,
-      invoiceNo: saleInvNum,
+      invoiceNo:       saleInvNum       || undefined,
+      publicToken:     salePublicToken,
       date: new Date().toISOString(),
       customerName: customerName.trim() || undefined,
       paymentMethod,

@@ -235,6 +235,7 @@ export interface InvoicePrintData {
   date?: string;
   dueDate?: string;
   publicToken?: string;
+  qrCodeDataUri?: string; // pre-generated QR data URL from server or generated client-side
   // Customer
   customerName?: string;
   customerEmail?: string;
@@ -302,7 +303,7 @@ function buildInvoicePageHtml(data: InvoicePrintData, autoprint = true): string 
   const {
     businessName, businessPhone, businessAddress, businessEmail,
     businessLogo, businessRcNumber, businessBnNumber, businessTaxId,
-    invoiceNo, date, dueDate, publicToken,
+    invoiceNo, date, dueDate, publicToken, qrCodeDataUri,
     customerName, customerEmail, customerPhone, customerAddress,
     paymentMethod, status, items, subtotal,
     vatAmount = 0, discountAmount = 0, grandTotal, amountPaid,
@@ -335,9 +336,9 @@ function buildInvoicePageHtml(data: InvoicePrintData, autoprint = true): string 
     businessTaxId    ? `<span style="font-size:11px;color:#6B7280;background:#F3F4F6;border-radius:4px;padding:2px 8px;font-weight:600;">TIN: ${businessTaxId}</span>` : '',
   ].filter(Boolean).join('');
 
-  const qrSrc = publicToken
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://easepay-backend.onrender.com/i/' + publicToken)}`
-    : '';
+  // Prefer pre-generated QR data URL (set by generateInvoicePdfBlob) over external API URL
+  const qrSrc = qrCodeDataUri ||
+    (publicToken ? `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://easepay-backend.onrender.com/i/' + publicToken)}` : '');
 
   const itemsHtml = items.map((item, i) => `
     <tr style="background:${i % 2 === 0 ? '#ffffff' : '#F9FAFB'};border-bottom:1px solid #F3F4F6;">
@@ -487,18 +488,35 @@ async function urlToDataUrl(url: string): Promise<string> {
 
 // Generates a real PDF blob from the invoice using html2canvas + jsPDF (mirrors mobile Print.printToFileAsync)
 export async function generateInvoicePdfBlob(data: InvoicePrintData): Promise<Blob> {
-  // Pre-convert remote image URLs to data URLs so html2canvas never makes
-  // a cross-origin request (eliminates CORS errors and load-timing races).
-  let pdfData = data;
-  const imageConversions: Promise<void>[] = [];
+  // Pre-convert every remote image to a base64 data URL so html2canvas never
+  // makes a cross-origin network request (eliminates CORS errors and timing races).
+  let pdfData = { ...data };
+  const jobs: Promise<void>[] = [];
+
   let logoDataUrl = data.businessLogo;
   let sigDataUrl  = data.signatureUri;
-  if (logoDataUrl?.startsWith('http')) imageConversions.push(urlToDataUrl(logoDataUrl).then(u => { logoDataUrl = u; }));
-  if (sigDataUrl?.startsWith('http'))  imageConversions.push(urlToDataUrl(sigDataUrl).then(u => { sigDataUrl  = u; }));
-  if (imageConversions.length) {
-    await Promise.all(imageConversions);
-    pdfData = { ...data, businessLogo: logoDataUrl, signatureUri: sigDataUrl };
+  let qrDataUrl   = data.qrCodeDataUri;
+
+  if (logoDataUrl?.startsWith('http')) jobs.push(urlToDataUrl(logoDataUrl).then(u => { logoDataUrl = u; }));
+  if (sigDataUrl?.startsWith('http'))  jobs.push(urlToDataUrl(sigDataUrl).then(u => { sigDataUrl  = u; }));
+  if (qrDataUrl?.startsWith('http'))   jobs.push(urlToDataUrl(qrDataUrl).then(u => { qrDataUrl   = u; }));
+
+  // If no QR data URL yet but we have a publicToken, generate the QR client-side
+  // using the qrcode npm package — no external service, no CORS issues.
+  if (!qrDataUrl && data.publicToken) {
+    jobs.push(
+      import('qrcode').then(mod => {
+        const QRCode = mod.default ?? mod;
+        return (QRCode as any).toDataURL(
+          `https://easepay-backend.onrender.com/i/${data.publicToken}`,
+          { width: 160, margin: 1, color: { dark: '#000000', light: '#ffffff' } }
+        );
+      }).then((url: string) => { qrDataUrl = url; }).catch(() => {})
+    );
   }
+
+  await Promise.all(jobs);
+  pdfData = { ...data, businessLogo: logoDataUrl, signatureUri: sigDataUrl, qrCodeDataUri: qrDataUrl };
 
   const [jspdfMod, h2cMod] = await Promise.all([
     import('jspdf'),

@@ -252,9 +252,10 @@ export default function NewInvoicePage() {
   if (success) {
     const invId = createdInvoice?.id || createdInvoice?._id;
     const publicToken = createdInvoice?.publicToken;
+    const qrCodeDataUri = createdInvoice?.qrCode || createdInvoice?.qrCodeUrl || createdInvoice?.qrCodeDataUri || undefined;
     const shareUrl = createdInvoice?.shareUrl || (publicToken ? `https://easepay-backend.onrender.com/i/${publicToken}` : invId ? `${window.location.origin}/dashboard/transactions/invoice/${invId}` : '');
     const businessName = (user as any)?.businessName || 'My Business';
-    const invNum = createdInvoice?.invoiceNumber || invoiceNumber;
+    const invNum = createdInvoice?.invoiceNumber || createdInvoice?.invoice?.invoiceNumber || createdInvoice?.data?.invoiceNumber || invoiceNumber;
 
     const thermalReceiptData = {
       businessName,
@@ -302,7 +303,8 @@ export default function NewInvoicePage() {
       invoiceNo: invNum,
       date: form.invoiceDate,
       dueDate: form.dueDate || undefined,
-      publicToken: publicToken || undefined,
+      publicToken:    publicToken    || undefined,
+      qrCodeDataUri:  qrCodeDataUri  || undefined,
       customerName: form.customerName || undefined,
       customerEmail: form.customerEmail || undefined,
       customerPhone: form.customerPhone || undefined,
