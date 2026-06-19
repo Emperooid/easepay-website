@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getSale, getExpense, getInvoice,
   deleteSale, deleteExpense, deleteInvoice,
-  updateInvoiceStatus, sendInvoice,
+  updateInvoiceStatus, sendInvoice, getBusinessProfile,
 } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge, statusBadge } from '@/components/ui/Badge';
@@ -69,6 +69,12 @@ export default function TransactionDetailPage() {
     enabled: !!config && !!id,
   });
 
+  const { data: bizProfileData } = useQuery({
+    queryKey: ['business-profile-pdf'],
+    queryFn: getBusinessProfile,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const deleteMut = useMutation({
     mutationFn: () => config?.deleteOp?.(id),
     onSuccess: () => { toast.success(`${config?.label} deleted`); router.back(); },
@@ -99,6 +105,16 @@ export default function TransactionDetailPage() {
 
   const buildPdfData = (item: any): InvoicePrintData => {
     const businessName = (user as any)?.businessName || 'My Business';
+    const rawBiz = (bizProfileData as any)?.data || (bizProfileData as any) || {};
+    const biz = rawBiz?.business || rawBiz || {};
+    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || biz?.businessLogo || null;
+    const bizPhone = biz?.phoneNumber || biz?.phone || biz?.businessPhone || (user as any)?.phone || '';
+    const bizAddress = biz?.address || biz?.businessAddress || '';
+    const bizEmail = biz?.email || biz?.businessEmail || (user as any)?.email || '';
+    const bizRc = biz?.rcNumber || biz?.rc || biz?.rc_number || '';
+    const bizBn = biz?.bnNumber || biz?.bn || biz?.bn_number || '';
+    const bizTin = biz?.taxId || biz?.tinNumber || biz?.tin || biz?.taxIdentificationNumber || '';
+
     const lineItems = (item.items || item.saleItems || item.invoiceItems || []).map((li: any) => ({
       name: li.name || li.productName || li.description || 'Item',
       description: li.description || undefined,
@@ -108,13 +124,19 @@ export default function TransactionDetailPage() {
     }));
     const grandTotal = Number(item.grandTotal || item.amount || item.total || 0);
     const subtotal = Number(item.subtotal || item.subTotal || grandTotal);
-    const publicToken = item.publicToken;
     return {
       businessName,
+      businessLogo: bizLogo || undefined,
+      businessPhone: bizPhone || undefined,
+      businessAddress: bizAddress || undefined,
+      businessEmail: bizEmail || undefined,
+      businessRcNumber: bizRc || undefined,
+      businessBnNumber: bizBn || undefined,
+      businessTaxId: bizTin || undefined,
       invoiceNo: item.invoiceNumber || item.saleNumber || item.referenceNumber,
       date: (item.invoiceDate || item.createdAt) ? new Date(item.invoiceDate || item.createdAt).toISOString() : new Date().toISOString(),
       dueDate: item.dueDate ? new Date(item.dueDate).toISOString() : undefined,
-      publicToken: publicToken || undefined,
+      publicToken: item.publicToken || undefined,
       customerName: item.customerName || item.customer?.name || undefined,
       customerEmail: item.customerEmail || item.customer?.email || undefined,
       customerPhone: item.customerPhone || item.customer?.phone || undefined,

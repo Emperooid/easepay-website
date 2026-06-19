@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { getSales, createSale, getInventory, adjustStock } from '@/services/apiService';
+import { getSales, createSale, getInventory, adjustStock, getBusinessProfile } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Plus, Search, Loader2, ShoppingCart, Trash2, CheckCircle2,
@@ -88,6 +88,12 @@ export default function SalesPage() {
   const [customItem, setCustomItem] = useState({ name: '', price: '' });
   const [showCustom, setShowCustom] = useState(false);
   const qc = useQueryClient();
+
+  const { data: bizProfileData } = useQuery({
+    queryKey: ['business-profile-pdf'],
+    queryFn: getBusinessProfile,
+    staleTime: 10 * 60 * 1000,
+  });
 
   const { data: salesData, isLoading, isFetching } = useQuery({
     queryKey: ['sales', page],
@@ -248,6 +254,15 @@ export default function SalesPage() {
     const saleId = lastSale?.id || lastSale?.saleId || lastSale?._id;
     const receiptUrl = saleId ? `${window.location.origin}/dashboard/transactions/sale/${saleId}` : '';
     const businessName = (user as any)?.businessName || 'My Business';
+    const rawBiz = (bizProfileData as any)?.data || (bizProfileData as any) || {};
+    const biz = rawBiz?.business || rawBiz || {};
+    const bizLogo = rawBiz?.logoUrl || biz?.logoUrl || biz?.logo || biz?.businessLogo || null;
+    const bizPhone = biz?.phoneNumber || biz?.phone || biz?.businessPhone || (user as any)?.phone || '';
+    const bizAddress = biz?.address || biz?.businessAddress || '';
+    const bizEmail = biz?.email || biz?.businessEmail || (user as any)?.email || '';
+    const bizRc = biz?.rcNumber || biz?.rc || biz?.rc_number || '';
+    const bizBn = biz?.bnNumber || biz?.bn || biz?.bn_number || '';
+    const bizTin = biz?.taxId || biz?.tinNumber || biz?.tin || biz?.taxIdentificationNumber || '';
 
     const thermalReceiptData = {
       businessName,
@@ -267,6 +282,13 @@ export default function SalesPage() {
 
     const a4PrintData = {
       businessName,
+      businessLogo: bizLogo || undefined,
+      businessPhone: bizPhone || undefined,
+      businessAddress: bizAddress || undefined,
+      businessEmail: bizEmail || undefined,
+      businessRcNumber: bizRc || undefined,
+      businessBnNumber: bizBn || undefined,
+      businessTaxId: bizTin || undefined,
       invoiceNo: saleInvNum,
       date: new Date().toISOString(),
       customerName: customerName.trim() || undefined,
