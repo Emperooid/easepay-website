@@ -67,6 +67,7 @@ export default function StockPage() {
   const [form, setForm] = useState({
     name: '', category: '', unitPrice: '', costPrice: '', quantity: '',
     kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5',
+    expiryDate: '', manufacturingDate: '',
   });
   const qc = useQueryClient();
 
@@ -102,7 +103,7 @@ export default function StockPage() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', category: '', unitPrice: '', costPrice: '', quantity: '', kg: 'Pcs', description: '', barcode: '', status: '', lowStockThreshold: '5' });
+    setForm({ name: '', category: '', unitPrice: '', costPrice: '', quantity: '', kg: 'Pcs', description: '', barcode: '', status: '', lowStockThreshold: '5', expiryDate: '', manufacturingDate: '' });
     setModal('add');
   };
 
@@ -115,6 +116,8 @@ export default function StockPage() {
       kg: p.unit || 'Pcs', description: p.description || '',
       barcode: p.barcode || '', status: p.status || '',
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
+      expiryDate: p.expiryDate ? String(p.expiryDate).slice(0, 10) : '',
+      manufacturingDate: p.manufacturingDate ? String(p.manufacturingDate).slice(0, 10) : '',
     });
     setModal('edit');
   };
@@ -136,6 +139,8 @@ export default function StockPage() {
       barcode: form.barcode || undefined,
       lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
       status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
+      expiryDate: form.expiryDate ? new Date(form.expiryDate).toISOString() : undefined,
+      manufacturingDate: form.manufacturingDate ? new Date(form.manufacturingDate).toISOString() : undefined,
     };
   };
 
@@ -464,6 +469,39 @@ export default function StockPage() {
                   placeholder="Color, size, variant..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacturing Date</label>
+                  <input
+                    type="date"
+                    value={form.manufacturingDate}
+                    onChange={e => setForm(f => ({ ...f, manufacturingDate: e.target.value }))}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Expiry Date</label>
+                  <input
+                    type="date"
+                    value={form.expiryDate}
+                    onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {form.expiryDate && (() => {
+                    const days = Math.ceil((new Date(form.expiryDate).getTime() - Date.now()) / 86400000);
+                    return (
+                      <p className={`text-xs mt-1 ${days < 0 ? 'text-red-500' : days <= 30 ? 'text-yellow-600' : 'text-green-600'}`}>
+                        {days < 0
+                          ? `Expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`
+                          : days === 0 ? 'Expires today'
+                          : `Expires in ${days} day${days === 1 ? '' : 's'}`}
+                      </p>
+                    );
+                  })()}
+                </div>
               </div>
 
             </div>

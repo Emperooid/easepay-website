@@ -137,7 +137,7 @@ export default function TransactionDetailPage() {
       accentColor:     tmpl.accentColor,
       signatureUri:    tmpl.signatureUri || undefined,
       invoiceNo: item.invoiceNumber || item.saleNumber || item.receiptNumber
-        || item.referenceNumber || item.id || item._id,
+        || item.referenceNumber || undefined,
       date: (item.invoiceDate || item.createdAt) ? new Date(item.invoiceDate || item.createdAt).toISOString() : new Date().toISOString(),
       dueDate: item.dueDate ? new Date(item.dueDate).toISOString() : undefined,
       publicToken:   item.publicToken  || undefined,
@@ -165,7 +165,7 @@ export default function TransactionDetailPage() {
 
   const handleDownloadPDF = async (item: any) => {
     const pdfData = buildPdfData(item);
-    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || id}.pdf`;
+    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || new Date().toISOString().slice(0, 10)}.pdf`;
     const t = toast.loading('Generating PDF...');
     try {
       await downloadInvoicePdf(pdfData, filename);
@@ -208,7 +208,7 @@ export default function TransactionDetailPage() {
 
   const handleWhatsApp = async (item: any) => {
     const pdfData = buildPdfData(item);
-    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || id}.pdf`;
+    const filename = `${type?.toLowerCase() === 'invoice' ? 'Invoice' : 'Receipt'}-${pdfData.invoiceNo || new Date().toISOString().slice(0, 10)}.pdf`;
     const t = toast.loading('Generating PDF...');
     try {
       const result = await shareInvoicePdfViaWhatsApp(pdfData, filename);

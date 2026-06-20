@@ -280,7 +280,7 @@ export default function SalesPage() {
     };
 
     const saleInvNum = lastSale?.invoiceNumber || lastSale?.saleNumber || lastSale?.receiptNumber
-      || lastSale?.referenceNumber || lastSale?.id || lastSale?._id;
+      || lastSale?.referenceNumber;
     const salePublicToken = lastSale?.publicToken || undefined;
 
     const a4PrintData = {
@@ -321,7 +321,7 @@ export default function SalesPage() {
     const handleDownloadPdf = async () => {
       const t = toast.loading('Generating PDF...');
       try {
-        await downloadInvoicePdf(a4PrintData, `Receipt-${saleInvNum || Date.now()}.pdf`);
+        await downloadInvoicePdf(a4PrintData, `Receipt-${saleInvNum || new Date().toISOString().slice(0, 10)}.pdf`);
         toast.success('PDF downloaded!', { id: t });
       } catch {
         toast.error('Could not generate PDF', { id: t });
@@ -331,7 +331,7 @@ export default function SalesPage() {
     const handleWhatsApp = async () => {
       const t = toast.loading('Generating PDF...');
       try {
-        const result = await shareInvoicePdfViaWhatsApp(a4PrintData, `Receipt-${saleInvNum || Date.now()}.pdf`);
+        const result = await shareInvoicePdfViaWhatsApp(a4PrintData, `Receipt-${saleInvNum || new Date().toISOString().slice(0, 10)}.pdf`);
         if (result === 'downloaded') {
           toast.success('PDF saved! Open WhatsApp and attach the file to share it.', { id: t, duration: 5000 });
         } else {
