@@ -267,7 +267,7 @@ export default function SalesPage() {
 
     const thermalReceiptData = {
       businessName,
-      invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber,
+      invoiceNo: lastSale?.invoiceNumber || lastSale?.saleNumber || lastSale?.receiptNumber || lastSale?.referenceNumber || undefined,
       date: new Date().toLocaleDateString('en-GB'),
       customerName: customerName.trim() || undefined,
       paymentMethod,

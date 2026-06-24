@@ -12,6 +12,7 @@ import {
   Search, X, AlertTriangle,
 } from 'lucide-react';
 import { useSubscription } from '@/context/SubscriptionContext';
+import { usePermissions } from '@/hooks/usePermissions';
 
 function HealthGauge({ score }: { score: number }) {
   const radius = 15;
@@ -164,6 +165,7 @@ const TYPE_CONFIG = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { isOwner, can } = usePermissions();
   const { isTrialExpired, trialDaysLeft } = useSubscription();
   const [activitySearch, setActivitySearch] = useState('');
   const [activityPage, setActivityPage] = useState(1);
@@ -326,12 +328,12 @@ export default function DashboardPage() {
           </p>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
             <div>
-              <p className="text-white/50 text-[10px] uppercase tracking-wide font-semibold">Today's Profit</p>
-              <p className={`text-2xl font-bold mt-0.5 ${todayProfit < 0 ? 'text-red-400' : 'text-white'}`}>
-                {formatCurrency(todayProfit)}
+              <p className="text-white/50 text-[10px] uppercase tracking-wide font-semibold">Today&apos;s Profit</p>
+              <p className={`text-2xl font-bold mt-0.5 ${isOwner && todayProfit < 0 ? 'text-red-400' : 'text-white'}`}>
+                {isOwner ? formatCurrency(todayProfit) : '••••••'}
               </p>
             </div>
-            {healthScore > 0 && <HealthGauge score={healthScore} />}
+            {isOwner && healthScore > 0 && <HealthGauge score={healthScore} />}
           </div>
         </div>
       </div>
@@ -345,7 +347,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs text-gray-400 font-medium">Cash in Hand</span>
           </div>
-          <p className="text-gray-900 text-base font-bold">{formatCurrency(cashInHand)}</p>
+          <p className="text-gray-900 text-base font-bold">{isOwner ? formatCurrency(cashInHand) : '••••••'}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-3.5">
           <div className="flex items-center gap-2 mb-2">
@@ -354,54 +356,62 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs text-gray-400 font-medium">Money in Bank</span>
           </div>
-          <p className="text-gray-900 text-base font-bold">{formatCurrency(bankBalance)}</p>
+          <p className="text-gray-900 text-base font-bold">{isOwner ? formatCurrency(bankBalance) : '••••••'}</p>
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions — filtered by staff permissions */}
       <div>
         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2.5">Quick Actions</p>
         <div className="grid grid-cols-2 gap-3">
-          <Link href="/dashboard/sales"
-            className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
-            <div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center group-hover:bg-green-100 transition-colors">
-              <Plus size={16} className="text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900">Record Sale</p>
-              <p className="text-[11px] text-gray-400">Add a new sale</p>
-            </div>
-          </Link>
-          <Link href="/dashboard/expenses"
-            className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
-            <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center group-hover:bg-red-100 transition-colors">
-              <Minus size={16} className="text-red-500" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900">Add Expense</p>
-              <p className="text-[11px] text-gray-400">Log an expense</p>
-            </div>
-          </Link>
-          <Link href="/dashboard/invoices/new"
-            className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-              <TrendingUp size={16} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900">New Invoice</p>
-              <p className="text-[11px] text-gray-400">Create & send</p>
-            </div>
-          </Link>
-          <Link href="/dashboard/stock"
-            className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
-            <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-              <Package size={16} className="text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-900">View Stock</p>
-              <p className="text-[11px] text-gray-400">Manage inventory</p>
-            </div>
-          </Link>
+          {(isOwner || can('manage_sales')) && (
+            <Link href="/dashboard/sales"
+              className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
+              <div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center group-hover:bg-green-100 transition-colors">
+                <Plus size={16} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Record Sale</p>
+                <p className="text-[11px] text-gray-400">Add a new sale</p>
+              </div>
+            </Link>
+          )}
+          {(isOwner || can('manage_expenses')) && (
+            <Link href="/dashboard/expenses"
+              className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
+              <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center group-hover:bg-red-100 transition-colors">
+                <Minus size={16} className="text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Add Expense</p>
+                <p className="text-[11px] text-gray-400">Log an expense</p>
+              </div>
+            </Link>
+          )}
+          {(isOwner || can('manage_invoices')) && (
+            <Link href="/dashboard/invoices/new"
+              className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                <TrendingUp size={16} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">New Invoice</p>
+                <p className="text-[11px] text-gray-400">Create &amp; send</p>
+              </div>
+            </Link>
+          )}
+          {(isOwner || can('manage_stocks')) && (
+            <Link href="/dashboard/stock"
+              className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-200 hover:border-[#050A30]/30 hover:shadow-sm transition-all group">
+              <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center group-hover:bg-purple-100 transition-colors">
+                <Package size={16} className="text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">View Stock</p>
+                <p className="text-[11px] text-gray-400">Manage inventory</p>
+              </div>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -472,7 +482,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <p className={`text-sm font-bold ${cfg.amtColor}`}>
-                      {cfg.prefix}{formatCurrency(item.amount)}
+                      {isOwner ? `${cfg.prefix}${formatCurrency(item.amount)}` : '••••'}
                     </p>
                     {isClickable && <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-500 transition-colors" />}
                   </div>

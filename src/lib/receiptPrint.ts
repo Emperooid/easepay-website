@@ -186,7 +186,7 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
   </div>
   <div class="separator"></div>
   <div>
-    <div>${typeLabel} #: ${invoiceNo || 'N/A'}</div>
+    ${invoiceNo ? `<div>${typeLabel} #: ${invoiceNo}</div>` : ''}
     <div>DATE: ${dateStr}</div>
     <div>CUST: ${customerName || 'Walk-in'}</div>
     ${paymentMethod ? `<div>PAY: ${paymentMethod}</div>` : ''}

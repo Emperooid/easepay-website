@@ -32,7 +32,8 @@ type PaperSize = '58mm' | '80mm';
 
 const COLS: Record<PaperSize, number> = { '58mm': 32, '80mm': 48 };
 
-const STORAGE_KEY = 'thermal_last_printer';
+const STORAGE_KEY      = 'thermal_last_printer';
+const PAPER_SIZE_KEY   = 'thermal_paper_size';
 
 const BLE_PROFILES = [
   { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af0-0000-1000-8000-00805f9b34fb' },
@@ -57,10 +58,6 @@ function centerText(s: string, n: number): string {
   return left > 0 ? ' '.repeat(left) + s : s;
 }
 
-function formatCurrency(n: number): string {
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', minimumFractionDigits: 2 }).format(n);
-}
-
 function buildEscPos(data: ThermalReceiptData, size: PaperSize): Uint8Array {
   const cols = COLS[size];
   const sep = '-'.repeat(cols);
@@ -72,15 +69,15 @@ function buildEscPos(data: ThermalReceiptData, size: PaperSize): Uint8Array {
   const cmd = (...bytes: number[]) => new Uint8Array(bytes);
   const line = (s: string) => enc(s + '\n');
 
-  // Init
+  // Use ASCII N instead of ₦ — avoids UTF-8 multi-byte misalignment on thermal printers
+  const amt = (n: number) =>
+    `N${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   push(cmd(ESC, 0x40));
-  // Center
-  push(cmd(ESC, 0x61, 0x01));
-  // Bold + double size
-  push(cmd(ESC, 0x45, 0x01), cmd(GS, 0x21, 0x11));
+  push(cmd(ESC, 0x61, 0x01)); // center
+  push(cmd(ESC, 0x45, 0x01), cmd(GS, 0x21, 0x11)); // bold + double
   push(line(data.businessName));
-  // Normal size, bold off
-  push(cmd(GS, 0x21, 0x00), cmd(ESC, 0x45, 0x00));
+  push(cmd(GS, 0x21, 0x00), cmd(ESC, 0x45, 0x00)); // normal
   if (data.businessPhone) push(line(data.businessPhone));
   if (data.businessAddress) push(line(data.businessAddress));
   push(line(''));
@@ -89,35 +86,36 @@ function buildEscPos(data: ThermalReceiptData, size: PaperSize): Uint8Array {
 
   const typeLabel = data.receiptType === 'INVOICE' ? 'INVOICE' : 'RECEIPT';
   if (data.invoiceNo) push(line(`${typeLabel} #: ${data.invoiceNo}`));
-  if (data.date)      push(line(`Date: ${data.date}`));
-  if (data.customerName)    push(line(`Customer: ${data.customerName}`));
-  if (data.paymentMethod)   push(line(`Payment: ${data.paymentMethod}`));
+  if (data.date)      push(line(`DATE: ${data.date}`));
+  if (data.customerName)  push(line(`CUST: ${data.customerName}`));
+  if (data.paymentMethod) push(line(`PAY:  ${data.paymentMethod}`));
   push(line(sep));
 
-  // Header row
-  const nameW = cols - 18;
-  push(line(padRight('ITEM', nameW) + padLeft('QTY', 4) + padLeft('PRICE', 7) + padLeft('AMT', 7)));
-  push(line(sep));
-
+  // Two-line item format: name on line 1, qty x price = total on line 2
   for (const item of data.items) {
-    const nameLine = padRight(item.name.slice(0, nameW), nameW)
-      + padLeft(String(item.quantity), 4)
-      + padLeft(formatCurrency(item.unitPrice).replace('₦', ''), 7)
-      + padLeft(formatCurrency(item.total).replace('₦', ''), 7);
-    push(line(nameLine));
+    const name = item.name.length > cols ? item.name.slice(0, cols - 1) + '~' : item.name;
+    push(line(name));
+    const left  = `  ${item.quantity} x ${amt(item.unitPrice)}`;
+    const right = amt(item.total);
+    const gap   = Math.max(1, cols - left.length - right.length);
+    push(line(left + ' '.repeat(gap) + right));
   }
 
   push(line(sep));
-  push(line(padRight('Subtotal', cols - 12) + padLeft(formatCurrency(data.subtotal), 12)));
+
+  // Dynamic amount column — wide enough so large totals are never truncated
+  const amtW = Math.max(12, amt(data.grandTotal).length + 1);
+  const lblW = cols - amtW;
+
+  push(line(padRight('Subtotal', lblW) + padLeft(amt(data.subtotal), amtW)));
   if (data.discountAmount && data.discountAmount > 0)
-    push(line(padRight('Discount', cols - 12) + padLeft('-' + formatCurrency(data.discountAmount), 12)));
+    push(line(padRight('Discount', lblW) + padLeft('-' + amt(data.discountAmount), amtW)));
   if (data.vatAmount && data.vatAmount > 0)
-    push(line(padRight('VAT', cols - 12) + padLeft(formatCurrency(data.vatAmount), 12)));
+    push(line(padRight('VAT', lblW) + padLeft(amt(data.vatAmount), amtW)));
   push(line(sep));
 
-  // Bold grand total
-  push(cmd(ESC, 0x45, 0x01));
-  push(line(padRight('TOTAL', cols - 12) + padLeft(formatCurrency(data.grandTotal), 12)));
+  push(cmd(ESC, 0x45, 0x01)); // bold
+  push(line(padRight('TOTAL', lblW) + padLeft(amt(data.grandTotal), amtW)));
   push(cmd(ESC, 0x45, 0x00));
   push(line(sep));
 
@@ -131,8 +129,7 @@ function buildEscPos(data: ThermalReceiptData, size: PaperSize): Uint8Array {
   push(line(''));
   push(line(''));
   push(line(''));
-  // Cut
-  push(cmd(GS, 0x56, 0x42, 0x00));
+  push(cmd(GS, 0x56, 0x42, 0x00)); // cut
 
   const total = chunks.reduce((s, c) => s + c.length, 0);
   const out = new Uint8Array(total);
@@ -155,7 +152,9 @@ async function sendToCharacteristic(char: any, data: Uint8Array) {
 
 export default function ThermalPrintModal({ visible, onClose, receiptData }: ThermalPrintModalProps) {
   const [stage, setStage] = useState<Stage>('checking');
-  const [paperSize, setPaperSize] = useState<PaperSize>('80mm');
+  const [paperSize, setPaperSize] = useState<PaperSize>(() => {
+    try { return (localStorage.getItem(PAPER_SIZE_KEY) as PaperSize) || '58mm'; } catch { return '58mm'; }
+  });
   const [errorMsg, setErrorMsg] = useState('');
   const [savedPrinter, setSavedPrinter] = useState<{ id: string; name: string } | null>(null);
   const deviceRef = useRef<any>(null);
@@ -292,13 +291,14 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
           </button>
         </div>
 
-        {/* Paper size picker */}
-        {(stage === 'reconnect' || stage === 'scanning' || stage === 'error') && (
+        {/* Paper size — always visible */}
+        {stage !== 'connecting' && stage !== 'printing' && stage !== 'done' && (
           <div className="flex gap-2 mb-4">
+            <span className="text-xs text-gray-400 self-center mr-1">Paper:</span>
             {(['58mm', '80mm'] as PaperSize[]).map(sz => (
               <button
                 key={sz}
-                onClick={() => setPaperSize(sz)}
+                onClick={() => { setPaperSize(sz); try { localStorage.setItem(PAPER_SIZE_KEY, sz); } catch {} }}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                   paperSize === sz
                     ? 'bg-[#050A30] text-white border-[#050A30]'
@@ -325,9 +325,10 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
               <Bluetooth size={22} className="text-gray-400" />
             </div>
             <div>
-              <p className="font-semibold text-gray-900 text-sm">Bluetooth Not Supported</p>
+              <p className="font-semibold text-gray-900 text-sm">Bluetooth Not Available</p>
               <p className="text-xs text-gray-500 mt-1">
-                Your browser doesn&apos;t support Web Bluetooth. Use Chrome or Edge on desktop, or use the HTML print option below.
+                Web Bluetooth requires Chrome or Edge on desktop/Android. Safari and Firefox do not support it.
+                For USB or network printers, use the browser print option below.
               </p>
             </div>
             <button
@@ -335,7 +336,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
               className="w-full py-2.5 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors flex items-center justify-center gap-2"
             >
               <Printer size={14} />
-              Print with Browser (HTML)
+              Print with Browser
             </button>
           </div>
         )}
@@ -348,7 +349,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-gray-900 truncate">{savedPrinter.name}</p>
-                <p className="text-xs text-gray-500">Last used printer</p>
+                <p className="text-xs text-gray-500">Last used Bluetooth printer</p>
               </div>
             </div>
             <button
@@ -356,20 +357,20 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
               className="w-full py-2.5 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors flex items-center justify-center gap-2"
             >
               <Wifi size={14} />
-              Connect & Print
-            </button>
-            <button
-              onClick={() => { clearSavedPrinter(); startScan(); }}
-              className="w-full py-2 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-            >
-              <RefreshCw size={13} />
-              Scan for Different Printer
+              Connect &amp; Print (Bluetooth)
             </button>
             <button
               onClick={handleFallback}
-              className="w-full py-2 text-gray-400 text-xs font-medium hover:text-gray-600 transition-colors"
+              className="w-full py-2.5 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
-              Use browser print instead
+              <Printer size={14} />
+              Print with Browser (USB / Network)
+            </button>
+            <button
+              onClick={() => { clearSavedPrinter(); startScan(); }}
+              className="w-full py-1.5 text-gray-400 text-xs font-medium hover:text-gray-600 transition-colors"
+            >
+              Scan for a different Bluetooth printer
             </button>
           </div>
         )}
@@ -382,12 +383,16 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
               </div>
               <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 animate-ping" />
             </div>
-            <p className="text-sm font-semibold text-gray-900">Scanning for Printers…</p>
+            <p className="text-sm font-semibold text-gray-900">Scanning for Bluetooth Printers…</p>
             <p className="text-xs text-gray-500 text-center">
-              Select your printer from the browser&apos;s Bluetooth picker.
+              Select your Bluetooth printer from the browser picker. For USB or network printers, use browser print instead.
             </p>
-            <button onClick={handleFallback} className="text-xs text-gray-400 hover:text-gray-600 transition-colors mt-1">
-              Cancel — use browser print
+            <button
+              onClick={handleFallback}
+              className="w-full py-2 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 mt-1"
+            >
+              <Printer size={14} />
+              Print with Browser (USB / Network)
             </button>
           </div>
         )}
