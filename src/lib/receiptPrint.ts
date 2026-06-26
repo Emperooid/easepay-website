@@ -135,87 +135,109 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
     receiptType = 'RECEIPT', notes,
   } = data;
 
-  const pw = paperWidth === 80 ? '80mm' : '58mm';
+  const pw = paperWidth === 58 ? '58mm' : '80mm';
   const dateStr = date || new Date().toLocaleDateString('en-GB');
   const typeLabel = receiptType === 'INVOICE' ? 'INVOICE' : receiptType === 'EXPENSE' ? 'EXPENSE' : 'RECEIPT';
 
+  const N = (n: number) => `N${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   const itemsHtml = items.map(item => `
     <tr>
-      <td class="col-item">${item.name}<br/><small>${item.quantity} x N${item.unitPrice.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</small></td>
-      <td class="col-total">N${item.total.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+      <td class="col-item">${item.name}<br/><small>${item.quantity} &times; ${N(item.unitPrice)}</small></td>
+      <td class="col-total">${N(item.total)}</td>
     </tr>`).join('');
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
   <style>
-    @page { margin: 0; size: ${pw} auto; }
+    @media print {
+      @page { size: ${pw} auto; margin: 2mm; }
+      html, body { width: ${pw}; margin: 0; padding: 0; }
+      .no-print { display: none !important; }
+    }
+    * { box-sizing: border-box; }
     body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      line-height: 1.4;
       width: ${pw};
-      padding: 2mm;
-      margin: 0;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 3mm 2mm;
       color: #000;
-      font-size: 11px;
-      line-height: 1.2;
+      background: #fff;
     }
     .text-center { text-align: center; }
-    .text-right { text-align: right; }
-    .text-bold { font-weight: bold; }
-    .title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
-    .subtitle { font-size: 10px; margin-bottom: 2px; }
-    .separator { border-top: 1px dashed #000; margin: 5px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    td { padding: 2px 0; vertical-align: top; }
-    .col-item { width: 70%; }
-    .col-total { width: 30%; text-align: right; }
-    @media screen {
-      body { background: #f5f5f5; }
-      .wrap { background: #fff; margin: 20px auto; padding: 8px; width: ${pw}; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
-    }
+    .text-right  { text-align: right; }
+    .bold        { font-weight: bold; }
+    .title       { font-size: 15px; font-weight: bold; margin-bottom: 3px; }
+    .small       { font-size: 10px; }
+    .sep         { border-top: 1px dashed #000; margin: 4px 0; }
+    table        { width: 100%; border-collapse: collapse; }
+    td           { padding: 2px 0; vertical-align: top; word-break: break-word; }
+    .col-item    { width: 65%; }
+    .col-total   { width: 35%; text-align: right; white-space: nowrap; }
   </style>
 </head>
 <body>
-<div class="wrap">
   <div class="text-center">
     <div class="title">${businessName}</div>
-    ${businessAddress ? `<div class="subtitle">${businessAddress}</div>` : ''}
-    ${businessPhone   ? `<div class="subtitle">${businessPhone}</div>` : ''}
+    ${businessAddress ? `<div class="small">${businessAddress}</div>` : ''}
+    ${businessPhone   ? `<div class="small">${businessPhone}</div>`   : ''}
   </div>
-  <div class="separator"></div>
+  <div class="sep"></div>
   <div>
     ${invoiceNo ? `<div>${typeLabel} #: ${invoiceNo}</div>` : ''}
     <div>DATE: ${dateStr}</div>
     <div>CUST: ${customerName || 'Walk-in'}</div>
     ${paymentMethod ? `<div>PAY: ${paymentMethod}</div>` : ''}
   </div>
-  <div class="separator"></div>
+  <div class="sep"></div>
   <table>${itemsHtml}</table>
-  <div class="separator"></div>
+  <div class="sep"></div>
   <table>
-    <tr><td>Subtotal</td><td class="text-right">N${subtotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>
-    ${vatAmount > 0      ? `<tr><td>VAT (7.5%)</td><td class="text-right">N${vatAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>` : ''}
-    ${discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">-N${discountAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>` : ''}
+    <tr><td>Subtotal</td><td class="text-right">${N(subtotal)}</td></tr>
+    ${vatAmount > 0      ? `<tr><td>VAT (7.5%)</td><td class="text-right">${N(vatAmount)}</td></tr>` : ''}
+    ${discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">-${N(discountAmount)}</td></tr>` : ''}
     ${paymentMethod      ? `<tr><td>Payment</td><td class="text-right">${paymentMethod}</td></tr>` : ''}
-    <tr><td class="text-bold">TOTAL</td><td class="text-bold text-right">N${grandTotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td></tr>
+    <tr><td class="bold">TOTAL</td><td class="bold text-right">${N(grandTotal)}</td></tr>
   </table>
-  ${notes ? `<div class="separator"></div><div class="subtitle">${notes}</div>` : ''}
-  <div class="separator"></div>
-  <div class="text-center subtitle" style="margin-top:10px;">Thanks for your business!</div>
+  ${notes ? `<div class="sep"></div><div class="small">${notes}</div>` : ''}
+  <div class="sep"></div>
+  <div class="text-center small" style="margin-top:6px;">Thanks for your business!</div>
   <br/><br/><br/>
-</div>
-<script>
-  window.onload = function() { setTimeout(function() { window.print(); }, 300); };
-</script>
+  <script>
+    window.onload = function() { setTimeout(function() { window.print(); }, 400); };
+  </script>
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', `width=${paperWidth === 58 ? 320 : 420},height=600,menubar=no,toolbar=no,location=no`);
-  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
-  win.document.write(html);
-  win.document.close();
+  // Open as blob URL in a new tab — avoids popup blockers on desktop and works on mobile
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const tab  = window.open(url, '_blank');
+    if (tab) {
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return;
+    }
+  } catch {}
+
+  // Last-resort iframe fallback (works if blob URL is blocked)
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('style', 'position:fixed;top:0;left:0;width:0;height:0;opacity:0;border:none;');
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument || (iframe.contentWindow as any)?.document;
+  if (doc) {
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { (iframe.contentWindow as any).print(); } catch {}
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch {} }, 60000);
+    }, 600);
+  }
 }
 
 // ── A4 Professional Invoice — port of mobile generateProfessionalInvoiceHtml ──

@@ -27,7 +27,7 @@ export interface ThermalPrintModalProps {
   receiptData: ThermalReceiptData;
 }
 
-type Stage = 'checking' | 'unavailable' | 'reconnect' | 'scanning' | 'connecting' | 'printing' | 'done' | 'error';
+type Stage = 'menu' | 'unavailable' | 'reconnect' | 'scanning' | 'connecting' | 'printing' | 'done' | 'error';
 type PaperSize = '58mm' | '80mm';
 
 const COLS: Record<PaperSize, number> = { '58mm': 32, '80mm': 48 };
@@ -151,7 +151,7 @@ async function sendToCharacteristic(char: any, data: Uint8Array) {
 }
 
 export default function ThermalPrintModal({ visible, onClose, receiptData }: ThermalPrintModalProps) {
-  const [stage, setStage] = useState<Stage>('checking');
+  const [stage, setStage] = useState<Stage>('menu');
   const [paperSize, setPaperSize] = useState<PaperSize>(() => {
     try { return (localStorage.getItem(PAPER_SIZE_KEY) as PaperSize) || '58mm'; } catch { return '58mm'; }
   });
@@ -178,19 +178,10 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
   useEffect(() => {
     if (!visible) return;
     setErrorMsg('');
+    setStage('menu');
     deviceRef.current = null;
-
-    const bt = (navigator as any).bluetooth;
-    if (!bt) { setStage('unavailable'); return; }
-
     const saved = getSavedPrinter();
     setSavedPrinter(saved);
-    setStage(saved ? 'reconnect' : 'scanning');
-
-    if (!saved) {
-      // Auto-open scan when no saved printer
-      startScan();
-    }
   }, [visible]);
 
   const printData = useCallback(async (device: any) => {
@@ -269,6 +260,15 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
     openThermalPrintWindow(receiptData, paperSize === '58mm' ? 58 : 80);
   };
 
+  const handleBluetoothPrint = useCallback(() => {
+    const bt = (navigator as any).bluetooth;
+    if (!bt) { setStage('unavailable'); return; }
+    const saved = getSavedPrinter();
+    setSavedPrinter(saved);
+    if (saved) { setStage('reconnect'); }
+    else { startScan(); }
+  }, [startScan]);
+
   if (!visible) return null;
 
   return (
@@ -291,31 +291,48 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
           </button>
         </div>
 
-        {/* Paper size — always visible */}
-        {stage !== 'connecting' && stage !== 'printing' && stage !== 'done' && (
-          <div className="flex gap-2 mb-4">
-            <span className="text-xs text-gray-400 self-center mr-1">Paper:</span>
-            {(['58mm', '80mm'] as PaperSize[]).map(sz => (
-              <button
-                key={sz}
-                onClick={() => { setPaperSize(sz); try { localStorage.setItem(PAPER_SIZE_KEY, sz); } catch {} }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                  paperSize === sz
-                    ? 'bg-[#050A30] text-white border-[#050A30]'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {sz}
-              </button>
-            ))}
+        {/* Paper size — visible on menu and reconnect */}
+        {(stage === 'menu' || stage === 'reconnect' || stage === 'unavailable') && (
+          <div className="mb-4">
+            <p className="text-xs text-gray-400 mb-1.5">Paper size</p>
+            <div className="flex gap-2">
+              {(['58mm', '80mm'] as PaperSize[]).map(sz => (
+                <button
+                  key={sz}
+                  onClick={() => { setPaperSize(sz); try { localStorage.setItem(PAPER_SIZE_KEY, sz); } catch {} }}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${
+                    paperSize === sz
+                      ? 'bg-[#050A30] text-white border-[#050A30]'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {sz}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Stage content */}
-        {stage === 'checking' && (
-          <div className="py-6 flex flex-col items-center gap-3">
-            <Loader2 size={32} className="text-[#050A30] animate-spin" />
-            <p className="text-sm text-gray-500">Checking Bluetooth…</p>
+        {stage === 'menu' && (
+          <div className="space-y-2.5">
+            <button
+              onClick={handleBluetoothPrint}
+              className="w-full py-3 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors flex items-center justify-center gap-2"
+            >
+              <Bluetooth size={15} />
+              Print via Bluetooth
+            </button>
+            <button
+              onClick={handleFallback}
+              className="w-full py-3 border border-gray-200 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Printer size={15} />
+              Print with Browser (USB / Network)
+            </button>
+            <p className="text-center text-xs text-gray-400 pt-1">
+              Bluetooth works on Chrome &amp; Edge · Browser print works everywhere
+            </p>
           </div>
         )}
 
