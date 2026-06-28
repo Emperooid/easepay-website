@@ -42,10 +42,23 @@ const USB_STORAGE_KEY = 'thermal_last_usb_printer';
 const PAPER_SIZE_KEY  = 'thermal_paper_size';
 
 const BLE_PROFILES = [
+  // XP / Goojprt / Woogou / most common Chinese BLE thermal printers
+  { service: '0000ff00-0000-1000-8000-00805f9b34fb', char: '0000ff02-0000-1000-8000-00805f9b34fb' },
+  { service: '0000ff00-0000-1000-8000-00805f9b34fb', char: '0000ff01-0000-1000-8000-00805f9b34fb' },
+  // HM-10 BLE module (used in many low-cost printers)
+  { service: '0000ffe0-0000-1000-8000-00805f9b34fb', char: '0000ffe1-0000-1000-8000-00805f9b34fb' },
+  // Zjiang / ZJ-5802
   { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af0-0000-1000-8000-00805f9b34fb' },
+  { service: '000018f0-0000-1000-8000-00805f9b34fb', char: '00002af1-0000-1000-8000-00805f9b34fb' },
+  // Epson BLE
   { service: 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', char: 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f' },
+  // ISSC / Microchip
   { service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', char: '49535343-8841-43f4-a8d4-ecbe34729bb3' },
+  { service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', char: '49535343-1e4d-4bd9-ba61-23c647249616' },
 ];
+
+// All unique service UUIDs — must be declared in optionalServices for Chrome to allow access
+const BLE_SERVICES = [...new Set(BLE_PROFILES.map(p => p.service))];
 
 function enc(str: string): Uint8Array {
   return new TextEncoder().encode(str);
@@ -235,7 +248,26 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
           break;
         } catch {}
       }
-      if (!printed) throw new Error('Printer connected but no print service found. Make sure this is a BLE thermal printer, not a Classic Bluetooth printer.');
+      // Dynamic fallback: discover any writable characteristic across all accessible services
+      if (!printed) {
+        try {
+          const services = await server.getPrimaryServices();
+          outer: for (const svc of services) {
+            try {
+              const chars = await svc.getCharacteristics();
+              for (const char of chars) {
+                if (char.properties.writeWithoutResponse || char.properties.write) {
+                  await sendToCharacteristic(char, bytes);
+                  printed = true;
+                  break outer;
+                }
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+
+      if (!printed) throw new Error('No writable print service found on this printer. This may be a Classic Bluetooth (non-BLE) printer which is not supported in the browser. Try "Print with Browser" instead.');
       saveBtPrinter(device.id, device.name || 'Bluetooth Printer');
       setStage('done');
     } catch (e: any) {
@@ -257,7 +289,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
       const bt     = (navigator as any).bluetooth;
       const device = await bt.requestDevice({
         acceptAllDevices: true,
-        optionalServices: BLE_PROFILES.map(p => p.service),
+        optionalServices: BLE_SERVICES,
       });
       deviceRef.current = device;
       await btPrint(device);
