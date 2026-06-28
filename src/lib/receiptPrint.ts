@@ -144,15 +144,15 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
   const itemsHtml = items.map(item => `
     <tr>
       <td style="width:65%;word-break:break-word;vertical-align:top;padding:2px 0">
-        ${item.name}<br/><span style="font-size:10px">${item.quantity} &times; ${N(item.unitPrice)}</span>
+        ${item.name}<br/><span style="font-size:10px">${item.quantity} x ${N(item.unitPrice)}</span>
       </td>
       <td style="width:35%;text-align:right;white-space:nowrap;vertical-align:top;padding:2px 0">
         ${N(item.total)}
       </td>
     </tr>`).join('');
 
-  const receiptHtml = `
-    <div style="font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;color:#000;width:${pw};padding:2mm;box-sizing:border-box">
+  const receiptBody = `
+    <div style="font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;color:#000;padding:2mm">
       <div style="text-align:center">
         <div style="font-size:15px;font-weight:bold;margin-bottom:3px">${businessName}</div>
         ${businessAddress ? `<div style="font-size:10px">${businessAddress}</div>` : ''}
@@ -180,43 +180,82 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
       </table>
       ${notes ? `<div style="border-top:1px dashed #000;margin:4px 0"></div><div style="font-size:10px">${notes}</div>` : ''}
       <div style="border-top:1px dashed #000;margin:4px 0"></div>
-      <div style="text-align:center;font-size:10px;margin-top:6px">Thanks for your business!</div>
+      <div style="text-align:center;font-size:10px;margin-top:6px">Thank you for your business!</div>
       <br/><br/><br/>
     </div>`;
 
-  // Remove any leftover receipt element from a previous call
-  document.getElementById('__ep_receipt__')?.remove();
-  document.getElementById('__ep_print_style__')?.remove();
-
-  // Inject receipt as a hidden-on-screen, visible-when-printing element
-  const container = document.createElement('div');
-  container.id = '__ep_receipt__';
-  container.innerHTML = receiptHtml;
-  document.body.appendChild(container);
-
-  // Print-only styles: hide everything except the receipt, set paper size
-  const style = document.createElement('style');
-  style.id = '__ep_print_style__';
-  style.textContent = `
+  // Full HTML page — opens in a new tab with an explicit Print button.
+  // No auto-print: user clicks the button which calls window.print() from a real gesture.
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Receipt</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     @media print {
-      @page { size: ${pw} auto; margin: 0; }
-      body > *:not(#__ep_receipt__) { display: none !important; }
-      #__ep_receipt__ { display: block !important; }
+      @page { size: ${pw} auto; margin: 2mm; }
+      .no-print { display: none !important; }
+      body { background: #fff; }
     }
-    @media screen { #__ep_receipt__ { display: none !important; } }
-  `;
-  document.head.appendChild(style);
+    @media screen {
+      body { background: #f0f0f0; padding: 16px; font-family: sans-serif; }
+      .no-print { margin-bottom: 12px; }
+      .receipt-wrap {
+        background: #fff;
+        width: ${pw};
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 4mm;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        border-radius: 4px;
+      }
+      .print-btn {
+        display: block;
+        width: 100%;
+        max-width: ${pw};
+        margin: 0 auto 8px;
+        padding: 12px;
+        background: #050A30;
+        color: #fff;
+        font-size: 15px;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .hint {
+        display: block;
+        width: 100%;
+        max-width: ${pw};
+        margin: 0 auto;
+        text-align: center;
+        font-size: 11px;
+        color: #666;
+        margin-bottom: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button class="print-btn" onclick="window.print()">Print Receipt</button>
+    <span class="hint">In the print dialog: select your thermal printer &bull; set paper to ${pw}</span>
+  </div>
+  <div class="receipt-wrap">${receiptBody}</div>
+</body>
+</html>`;
 
-  // Call window.print() directly — always works, never blocked, preserves user gesture
-  window.print();
-
-  // Clean up after the print dialog closes
-  const cleanup = () => {
-    document.getElementById('__ep_receipt__')?.remove();
-    document.getElementById('__ep_print_style__')?.remove();
-  };
-  window.addEventListener('afterprint', cleanup, { once: true });
-  setTimeout(cleanup, 10000); // fallback in case afterprint doesn't fire
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const tab  = window.open(url, '_blank');
+  if (tab) {
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    return;
+  }
+  // Fallback if tab was blocked — write into current window
+  document.write(html);
 }
 
 // ── A4 Professional Invoice — port of mobile generateProfessionalInvoiceHtml ──

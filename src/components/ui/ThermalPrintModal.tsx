@@ -235,11 +235,17 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
           break;
         } catch {}
       }
-      if (!printed) throw new Error('No compatible BLE service found on this printer.');
+      if (!printed) throw new Error('Printer connected but no print service found. Make sure this is a BLE thermal printer, not a Classic Bluetooth printer.');
       saveBtPrinter(device.id, device.name || 'Bluetooth Printer');
       setStage('done');
     } catch (e: any) {
-      setErrorMsg(e?.message || 'Bluetooth print failed');
+      const msg = e?.message || '';
+      const friendly = msg.includes('GATT')
+        ? 'Could not reach the printer. Make sure it is powered on and not connected to another device, then try again.'
+        : msg.includes('security') || msg.includes('pairing')
+        ? 'Bluetooth pairing required. Pair the printer in your device Bluetooth settings first.'
+        : msg || 'Bluetooth print failed.';
+      setErrorMsg(friendly);
       setStage('error');
     }
   }, [receiptData, paperSize]);
@@ -256,10 +262,14 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
       deviceRef.current = device;
       await btPrint(device);
     } catch (e: any) {
-      if (e?.name === 'NotFoundError' || e?.message?.includes('cancelled') || e?.message?.includes('User cancelled')) {
+      const name = e?.name || '';
+      const msg  = e?.message || '';
+      if (name === 'NotFoundError' || msg.includes('cancelled') || msg.includes('User cancelled') || msg.includes('chosen')) {
         setStage('menu');
+      } else if (name === 'NotSupportedError' || msg.includes('not supported') || msg.includes('no Bluetooth') || msg.includes('adapter')) {
+        setStage('bt-unavailable');
       } else {
-        setErrorMsg(e?.message || 'Could not connect');
+        setErrorMsg(msg || 'Could not connect to Bluetooth printer.');
         setStage('error');
       }
     }
@@ -307,7 +317,12 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
       setStage('done');
     } catch (e: any) {
       try { await device.close(); } catch {}
-      setErrorMsg(e?.message || 'USB print failed');
+      const msg = e?.message || '';
+      const isAccessDenied = msg.toLowerCase().includes('claim') || msg.toLowerCase().includes('access') || e?.name === 'SecurityError' || e?.name === 'NetworkError';
+      const friendly = isAccessDenied
+        ? 'Windows controls this USB printer via its driver. Use "Print with Browser" instead and select the thermal printer in Chrome\'s print dialog.'
+        : msg || 'USB print failed.';
+      setErrorMsg(friendly);
       setStage('error');
     }
   }, [receiptData, paperSize]);
@@ -321,10 +336,14 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
       deviceRef.current = device;
       await usbPrint(device);
     } catch (e: any) {
-      if (e?.name === 'NotFoundError' || e?.name === 'SecurityError' || e?.message?.includes('No device')) {
+      const name = e?.name || '';
+      const msg  = e?.message || '';
+      if (name === 'NotFoundError' || msg.includes('No device') || msg.includes('cancelled')) {
         setStage('menu');
+      } else if (name === 'NotSupportedError') {
+        setStage('usb-unavailable');
       } else {
-        setErrorMsg(e?.message || 'Could not connect to USB printer');
+        setErrorMsg(msg || 'Could not connect to USB printer.');
         setStage('error');
       }
     }
