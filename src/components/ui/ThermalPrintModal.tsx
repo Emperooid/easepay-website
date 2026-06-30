@@ -29,7 +29,7 @@ export interface ThermalPrintModalProps {
 
 type Stage =
   | 'menu'
-  | 'bt-unavailable' | 'bt-reconnect' | 'bt-scanning'
+  | 'bt-unavailable' | 'bt-reconnect' | 'bt-scanning' | 'bt-classic'
   | 'usb-unavailable' | 'usb-reconnect' | 'usb-scanning'
   | 'connecting' | 'printing' | 'done' | 'error';
 
@@ -267,7 +267,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
         } catch {}
       }
 
-      if (!printed) throw new Error('No writable print service found on this printer. This may be a Classic Bluetooth (non-BLE) printer which is not supported in the browser. Try "Print with Browser" instead.');
+      if (!printed) { setStage('bt-classic'); return; }
       saveBtPrinter(device.id, device.name || 'Bluetooth Printer');
       setStage('done');
     } catch (e: any) {
@@ -418,7 +418,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
 
   if (!visible) return null;
 
-  const showPaperPicker = ['menu', 'bt-reconnect', 'bt-unavailable', 'usb-reconnect', 'usb-unavailable'].includes(stage);
+  const showPaperPicker = ['menu', 'bt-reconnect', 'bt-unavailable', 'bt-classic', 'usb-reconnect', 'usb-unavailable'].includes(stage);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -547,6 +547,40 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
             </div>
             <p className="text-sm font-semibold text-gray-900">Scanning for Bluetooth Printers…</p>
             <p className="text-xs text-gray-500 text-center">Select your printer from the browser picker.</p>
+          </div>
+        )}
+
+        {/* ── CLASSIC BLUETOOTH ─────────────────────────────────────────────── */}
+        {stage === 'bt-classic' && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-800 mb-1">Classic Bluetooth Printer Detected</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                This printer uses Classic Bluetooth (not BLE), which browsers cannot access directly.
+                Use <strong>Print with Browser</strong> — Chrome will open a print dialog where you can select
+                your paired thermal printer.
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-700 mb-1">On mobile?</p>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Install your printer's official Android app first so it appears in Chrome's print dialog.
+                Or use the <strong>EasePay mobile app</strong> which supports Classic Bluetooth directly.
+              </p>
+            </div>
+            <button
+              onClick={handleFallback}
+              className="w-full py-3 bg-[#050A30] text-white text-sm font-semibold rounded-xl hover:bg-[#0a1460] transition-colors flex items-center justify-center gap-2"
+            >
+              <Printer size={15} />
+              Print with Browser
+            </button>
+            <button
+              onClick={() => setStage('menu')}
+              className="w-full py-1.5 text-gray-400 text-xs font-medium hover:text-gray-600 transition-colors"
+            >
+              Back to options
+            </button>
           </div>
         )}
 
