@@ -6,6 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import SubscriptionBanner from '@/components/ui/SubscriptionBanner';
+import SubscriptionGate from '@/components/ui/SubscriptionGate';
 
 
 const pageTitles: Record<string, string> = {
@@ -62,11 +64,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} title={title} />
+        <SubscriptionBanner />
         <main className="flex-1 overflow-y-auto p-3 lg:p-4">
           {children}
         </main>
       </div>
       <OfflineBanner />
+      <SubscriptionGate />
     </div>
   );
 }
