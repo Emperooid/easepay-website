@@ -124,7 +124,8 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
   document.write(html);
 }
 
-// ── Thermal Receipt (58mm / 80mm) — port of mobile generateThermalReceiptHtml ──
+// ── Thermal Receipt (58mm / 80mm) ────────────────────────────────────────────
+// Uses a pre-formatted monospace layout so lines never overflow paper width.
 
 export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 80): void {
   const {
@@ -134,57 +135,58 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
     receiptType = 'RECEIPT', notes,
   } = data;
 
-  const pw = paperWidth === 58 ? '58mm' : '80mm';
-  const dateStr = date || new Date().toLocaleDateString('en-GB');
+  const pw   = paperWidth === 58 ? '58mm' : '80mm';
+  const cols = paperWidth === 58 ? 32 : 48;
+  // Body width = paper width minus 2 × 2 mm page margin
+  const bodyW = paperWidth === 58 ? '54mm' : '76mm';
+  const dateStr   = date || new Date().toLocaleDateString('en-GB');
   const typeLabel = receiptType === 'INVOICE' ? 'INVOICE' : receiptType === 'EXPENSE' ? 'EXPENSE' : 'RECEIPT';
 
-  const N = (n: number) => `N${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const N   = (n: number) => `N${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pr  = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
+  const pl  = (s: string, n: number) => s.length >= n ? s.slice(0, n) : ' '.repeat(n - s.length) + s;
+  const ctr = (s: string) => { const pad = Math.max(0, Math.floor((cols - s.length) / 2)); return ' '.repeat(pad) + s; };
+  const sep = '-'.repeat(cols);
 
-  const itemsHtml = items.map(item => `
-    <tr>
-      <td style="width:65%;word-break:break-word;vertical-align:top;padding:2px 0">
-        ${item.name}<br/><span style="font-size:10px">${item.quantity} x ${N(item.unitPrice)}</span>
-      </td>
-      <td style="width:35%;text-align:right;white-space:nowrap;vertical-align:top;padding:2px 0">
-        ${N(item.total)}
-      </td>
-    </tr>`).join('');
+  const lines: string[] = [];
+  lines.push(ctr(businessName));
+  if (businessAddress) lines.push(ctr(businessAddress));
+  if (businessPhone)   lines.push(ctr(`Tel: ${businessPhone}`));
+  lines.push(sep);
+  lines.push(ctr(typeLabel));
+  lines.push(sep);
+  if (invoiceNo)     lines.push(`Ref:  #${invoiceNo}`);
+  lines.push(`Date: ${dateStr}`);
+  lines.push(`Cust: ${(customerName || 'Walk-in').slice(0, cols - 6)}`);
+  if (paymentMethod) lines.push(`Pay:  ${paymentMethod.slice(0, cols - 6)}`);
+  lines.push(sep);
 
-  const receiptBody = `
-    <div style="font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.4;color:#000;padding:2mm">
-      <div style="text-align:center">
-        <div style="font-size:15px;font-weight:bold;margin-bottom:3px">${businessName}</div>
-        ${businessAddress ? `<div style="font-size:10px">${businessAddress}</div>` : ''}
-        ${businessPhone   ? `<div style="font-size:10px">${businessPhone}</div>`   : ''}
-      </div>
-      <div style="border-top:1px dashed #000;margin:4px 0"></div>
-      <div>
-        ${invoiceNo ? `<div>${typeLabel} #: ${invoiceNo}</div>` : ''}
-        <div>DATE: ${dateStr}</div>
-        <div>CUST: ${customerName || 'Walk-in'}</div>
-        ${paymentMethod ? `<div>PAY: ${paymentMethod}</div>` : ''}
-      </div>
-      <div style="border-top:1px dashed #000;margin:4px 0"></div>
-      <table style="width:100%;border-collapse:collapse">${itemsHtml}</table>
-      <div style="border-top:1px dashed #000;margin:4px 0"></div>
-      <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:2px 0">Subtotal</td><td style="text-align:right;padding:2px 0">${N(subtotal)}</td></tr>
-        ${vatAmount > 0      ? `<tr><td style="padding:2px 0">VAT (7.5%)</td><td style="text-align:right;padding:2px 0">${N(vatAmount)}</td></tr>` : ''}
-        ${discountAmount > 0 ? `<tr><td style="padding:2px 0">Discount</td><td style="text-align:right;padding:2px 0">-${N(discountAmount)}</td></tr>` : ''}
-        ${paymentMethod      ? `<tr><td style="padding:2px 0">Payment</td><td style="text-align:right;padding:2px 0">${paymentMethod}</td></tr>` : ''}
-        <tr>
-          <td style="font-weight:bold;padding:2px 0">TOTAL</td>
-          <td style="text-align:right;font-weight:bold;padding:2px 0">${N(grandTotal)}</td>
-        </tr>
-      </table>
-      ${notes ? `<div style="border-top:1px dashed #000;margin:4px 0"></div><div style="font-size:10px">${notes}</div>` : ''}
-      <div style="border-top:1px dashed #000;margin:4px 0"></div>
-      <div style="text-align:center;font-size:10px;margin-top:6px">Thank you for your business!</div>
-      <br/><br/><br/>
-    </div>`;
+  const amtW = Math.max(10, N(grandTotal).length + 1);
+  const lblW = cols - amtW;
 
-  // Full HTML page — opens in a new tab with an explicit Print button.
-  // No auto-print: user clicks the button which calls window.print() from a real gesture.
+  for (const item of items) {
+    const maxName = cols - 1;
+    const name = item.name.length > maxName ? item.name.slice(0, maxName - 1) + '~' : item.name;
+    lines.push(name);
+    const detail = `  ${item.quantity} x ${N(item.unitPrice)}`;
+    lines.push(pr(detail, lblW) + pl(N(item.total), amtW));
+  }
+
+  lines.push(sep);
+  lines.push(pr('Subtotal', lblW)   + pl(N(subtotal),   amtW));
+  if (discountAmount > 0) lines.push(pr('Discount', lblW) + pl('-' + N(discountAmount), amtW));
+  if (vatAmount > 0)      lines.push(pr('VAT (7.5%)', lblW) + pl(N(vatAmount), amtW));
+  lines.push(sep);
+  lines.push(pr('TOTAL', lblW)      + pl(N(grandTotal), amtW));
+  lines.push(sep);
+  if (notes) { lines.push(`Note: ${notes}`); lines.push(sep); }
+  lines.push(ctr('Thank you for your business!'));
+  lines.push('');
+  lines.push('');
+  lines.push('');
+
+  const receiptText = lines.join('\n');
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -193,22 +195,31 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
   <title>Receipt</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    pre {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: ${paperWidth === 58 ? '10.5px' : '11px'};
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #000;
+    }
     @media print {
       @page { size: ${pw} auto; margin: 2mm; }
       .no-print { display: none !important; }
-      body { background: #fff; }
+      body { width: ${bodyW}; margin: 0; padding: 0; background: #fff; }
+      pre  { width: 100%; overflow: hidden; }
     }
     @media screen {
       body { background: #f0f0f0; padding: 16px; font-family: sans-serif; }
-      .no-print { margin-bottom: 12px; }
       .receipt-wrap {
         background: #fff;
         width: ${pw};
         max-width: 100%;
         margin: 0 auto;
         padding: 4mm;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        box-shadow: 0 2px 12px rgba(0,0,0,.15);
         border-radius: 4px;
+        overflow: hidden;
       }
       .print-btn {
         display: block;
@@ -226,34 +237,28 @@ export function openThermalPrintWindow(data: ReceiptData, paperWidth: 58 | 80 = 
       }
       .hint {
         display: block;
-        width: 100%;
         max-width: ${pw};
-        margin: 0 auto;
+        margin: 0 auto 12px;
         text-align: center;
         font-size: 11px;
         color: #666;
-        margin-bottom: 12px;
       }
     }
   </style>
 </head>
 <body>
   <div class="no-print">
-    <button class="print-btn" onclick="window.print()">Print Receipt</button>
-    <span class="hint">In the print dialog: select your thermal printer &bull; set paper to ${pw}</span>
+    <button class="print-btn" onclick="window.print()">&#128438; Print Receipt</button>
+    <span class="hint">In the print dialog: select your thermal printer &bull; set paper to ${pw} &bull; margins to None</span>
   </div>
-  <div class="receipt-wrap">${receiptBody}</div>
+  <div class="receipt-wrap"><pre>${receiptText}</pre></div>
 </body>
 </html>`;
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const tab  = window.open(url, '_blank');
-  if (tab) {
-    setTimeout(() => URL.revokeObjectURL(url), 120_000);
-    return;
-  }
-  // Fallback if tab was blocked — write into current window
+  if (tab) { setTimeout(() => URL.revokeObjectURL(url), 120_000); return; }
   document.write(html);
 }
 

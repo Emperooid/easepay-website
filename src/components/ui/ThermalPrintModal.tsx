@@ -253,8 +253,10 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
   }, [btPrint]);
 
   // ── BT reconnect to last printer ─────────────────────────────────────────────
+  // fallbackToScan=true when called from a user tap (requestDevice is allowed).
+  // fallbackToScan=false when called from useEffect (requestDevice would throw SecurityError).
 
-  const tryBtReconnect = useCallback(async (saved: SavedBt) => {
+  const tryBtReconnect = useCallback(async (saved: SavedBt, fallbackToScan = true) => {
     methodRef.current = 'bt';
     setStage('connecting');
     setPrinterName(saved.name);
@@ -266,8 +268,7 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
         device = list.find((d: any) => d.id === saved.id) ?? null;
       }
       if (!device) {
-        // Can't auto-reconnect — prompt picker
-        await startBtScan();
+        if (fallbackToScan) { await startBtScan(); } else { setStage('menu'); }
         return;
       }
       deviceRef.current = device;
@@ -326,14 +327,17 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
 
   // ── USB reconnect ────────────────────────────────────────────────────────────
 
-  const tryUsbReconnect = useCallback(async (saved: SavedUsb) => {
+  const tryUsbReconnect = useCallback(async (saved: SavedUsb, fallbackToScan = true) => {
     methodRef.current = 'usb';
     setStage('connecting');
     setPrinterName(saved.name);
     try {
       const devices: any[] = await (navigator as any).usb.getDevices();
       const device = devices.find(d => d.vendorId === saved.vendorId && d.productId === saved.productId);
-      if (!device) { await startUsbScan(); return; }
+      if (!device) {
+        if (fallbackToScan) { await startUsbScan(); } else { setStage('menu'); }
+        return;
+      }
       deviceRef.current = device;
       await usbPrint(device);
     } catch (e: any) {
@@ -358,16 +362,17 @@ export default function ThermalPrintModal({ visible, onClose, receiptData }: The
     const bt  = (navigator as any).bluetooth;
     const usb = (navigator as any).usb;
 
-    // Auto-connect to last BT printer on open — mirrors mobile behaviour
+    // Silently reconnect via getDevices() (no user gesture needed).
+    // Pass false so we never fall through to requestDevice() from here —
+    // that requires a user gesture and throws SecurityError in useEffect.
     if (savedBt && bt) {
       methodRef.current = 'bt';
-      tryBtReconnect(savedBt);
+      tryBtReconnect(savedBt, false);
       return;
     }
-    // Auto-connect to last USB printer if no BT saved
     if (savedUsb && usb) {
       methodRef.current = 'usb';
-      tryUsbReconnect(savedUsb);
+      tryUsbReconnect(savedUsb, false);
       return;
     }
 
