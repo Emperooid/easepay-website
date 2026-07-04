@@ -113,16 +113,15 @@ export function openReceiptPrintWindow(data: ReceiptData): void {
   ${notes ? `<div style="margin-top:4px;font-size:10px;">${notes}</div><div class="sep"></div>` : ''}
   <div class="footer">Thank you for your business!<br/>Powered by EasePay</div>
 </div>
-<script>
-  window.onload = function() { setTimeout(function() { window.print(); }, 300); };
-</script>
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no');
-  if (!win) { alert('Please allow popups for this site to use the print feature.'); return; }
-  win.document.write(html);
-  win.document.close();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const tab  = window.open(url, '_blank');
+  if (tab) { setTimeout(() => URL.revokeObjectURL(url), 120_000); return; }
+  // Fallback if tab was blocked
+  document.write(html);
 }
 
 // ── Thermal Receipt (58mm / 80mm) — port of mobile generateThermalReceiptHtml ──
