@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useSubscription } from '@/context/SubscriptionContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import toast from 'react-hot-toast';
 
 function HealthGauge({ score }: { score: number }) {
   const radius = 15;
@@ -216,6 +217,28 @@ export default function DashboardPage() {
     if (cashInHand > 0 || startCash > 0) localStorage.setItem('computed_cash_in_hand', String(cashInHand));
     if (bankBalance > 0 || startBank > 0) localStorage.setItem('computed_cash_in_bank', String(bankBalance));
   }, [cashInHand, bankBalance, startCash, startBank]);
+
+  // Stock alerts on load — show once per session (mirrors mobile's low-stock notification)
+  useEffect(() => {
+    if (!inventoryForLookup.length) return;
+    const sessionKey = 'stock_alert_shown';
+    if (sessionStorage.getItem(sessionKey)) return;
+    const outOfStock = inventoryForLookup.filter((p: any) => (p.quantity ?? 0) === 0);
+    const lowStock   = inventoryForLookup.filter((p: any) => {
+      const qty = p.quantity ?? 0;
+      return qty > 0 && qty <= (p.lowStockThreshold ?? 5);
+    });
+    if (outOfStock.length > 0 || lowStock.length > 0) {
+      const parts: string[] = [];
+      if (outOfStock.length) parts.push(`${outOfStock.length} item${outOfStock.length > 1 ? 's' : ''} out of stock`);
+      if (lowStock.length)   parts.push(`${lowStock.length} low stock`);
+      toast(`⚠️ Stock alert: ${parts.join(' · ')}`, {
+        duration: 5000,
+        style: { background: '#fff7ed', border: '1px solid #fed7aa', color: '#92400e', fontSize: '13px' },
+      });
+      sessionStorage.setItem(sessionKey, '1');
+    }
+  }, [inventoryForLookup]);
 
   const recentSales: any[] = (recentSalesData?.data as any)?.sales || (recentSalesData as any)?.sales || recentSalesData?.data || [];
   const recentExpenses: any[] = (recentExpData?.data as any)?.expenses || (recentExpData as any)?.expenses || recentExpData?.data || [];

@@ -138,7 +138,7 @@ export default function BusinessHealthPage() {
     const profCompleteness = Math.round((profFields / 3) * 20);
 
     const totalScore = revConsistency + payHistory + busAge + profCompleteness;
-    setScoreData({
+    const computed = {
       score: Math.min(100, totalScore),
       metrics: {
         revenueConsistency: (revConsistency / 30) * 100,
@@ -147,7 +147,22 @@ export default function BusinessHealthPage() {
         profileCompleteness:(profCompleteness / 20) * 100,
       },
       _local: true,
-    });
+    };
+    setScoreData(computed);
+
+    // Persist to history (keep last 12 entries)
+    try {
+      const raw = localStorage.getItem('bh_score_history');
+      const history: any[] = raw ? JSON.parse(raw) : [];
+      const today = new Date().toISOString().split('T')[0];
+      const last = history[history.length - 1];
+      if (!last || last.date !== today) {
+        history.push({ date: today, score: computed.score, metrics: computed.metrics });
+        if (history.length > 12) history.shift();
+        localStorage.setItem('bh_score_history', JSON.stringify(history));
+      }
+    } catch {}
+
     setLocalLoading(false);
   }, [creditData, creditLoading, salesData, invData, expData, homeData]);
 
@@ -185,10 +200,10 @@ export default function BusinessHealthPage() {
   ];
 
   const scoreMetrics = [
-    { label: 'Revenue Consistency', value: metrics.revenueConsistency || 0, color: '#22c55e' },
-    { label: 'Payment History',     value: metrics.paymentHistory     || 0, color: '#3b82f6' },
-    { label: 'Business Age',        value: metrics.businessAge        || 0, color: '#a855f7' },
-    { label: 'Profile Completeness',value: metrics.profileCompleteness|| 0, color: '#f59e0b' },
+    { label: 'Revenue Consistency', value: metrics.revenueConsistency || 0, color: '#22c55e', max: 30 },
+    { label: 'Payment History',     value: metrics.paymentHistory     || 0, color: '#3b82f6', max: 30 },
+    { label: 'Business Age',        value: metrics.businessAge        || 0, color: '#a855f7', max: 20 },
+    { label: 'Profile Completeness',value: metrics.profileCompleteness|| 0, color: '#f59e0b', max: 20 },
   ];
 
   if (localLoading || creditLoading) {
@@ -220,9 +235,15 @@ export default function BusinessHealthPage() {
           <h1 className="text-lg font-bold text-gray-900">Business Health</h1>
           <p className="text-sm text-gray-400 mt-0.5">An overview of your business performance and financial health.</p>
         </div>
-        {scoreData?._local && (
-          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Computed locally</span>
-        )}
+        <div className="flex items-center gap-2">
+          {scoreData?._local && (
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Computed locally</span>
+          )}
+          <Link href="/dashboard/business-health/history"
+            className="text-xs text-[#050A30] font-semibold hover:underline">
+            View History →
+          </Link>
+        </div>
       </div>
 
       {/* Score Card */}
@@ -235,16 +256,19 @@ export default function BusinessHealthPage() {
           </div>
           {/* Score breakdown bars */}
           <div className="space-y-2">
-            {scoreMetrics.map(m => (
-              <div key={m.label} className="flex items-center gap-3">
-                <span className="text-xs text-gray-500 w-36 flex-shrink-0">{m.label}</span>
-                <div className="flex-1 bg-gray-100 rounded-full h-2">
-                  <div className="h-2 rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, m.value)}%`, backgroundColor: m.color }} />
+            {scoreMetrics.map(m => {
+              const rawPts = Math.round((m.value / 100) * m.max);
+              return (
+                <div key={m.label} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-36 flex-shrink-0">{m.label}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-2">
+                    <div className="h-2 rounded-full transition-all duration-700"
+                      style={{ width: `${Math.min(100, m.value)}%`, backgroundColor: m.color }} />
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700 w-12 text-right whitespace-nowrap">{rawPts}/{m.max} pts</span>
                 </div>
-                <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.round(m.value)}%</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

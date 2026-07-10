@@ -43,6 +43,8 @@ export default function InvoicesPage() {
 
   const status = statusFilter === 'ALL' ? undefined : statusFilter;
   const { data, isLoading } = useQuery({ queryKey: ['invoices', status], queryFn: () => getInvoices({ status, limit: 100 }) });
+  // Always fetch all invoices for accurate per-status totals regardless of active filter
+  const { data: allInvData } = useQuery({ queryKey: ['invoices-all'], queryFn: () => getInvoices({ limit: 500 }) });
   const { data: nextNumData } = useQuery({ queryKey: ['next-invoice'], queryFn: getNextInvoiceNumber, enabled: showModal });
 
   const invalidateAll = () => {
@@ -139,6 +141,23 @@ export default function InvoicesPage() {
     partial: rawInvoices.filter((i: any) => (i.status || '').toLowerCase().includes('partial')).length,
   };
 
+  // Per-status ₦ totals from the always-fetched full list
+  const allRawForTotals: any[] = useMemo(() => {
+    const r = (allInvData?.data as any)?.invoices || (allInvData as any)?.invoices || allInvData?.data || [];
+    return Array.isArray(r) ? r : [];
+  }, [allInvData]);
+
+  const statusTotals = useMemo(() => {
+    const totals: Record<string, number> = { ALL: 0 };
+    for (const inv of allRawForTotals) {
+      const amt = Number(inv.grandTotal || inv.total || inv.amount || 0);
+      const s = (inv.status || '').toUpperCase();
+      totals.ALL = (totals.ALL || 0) + amt;
+      totals[s]  = (totals[s]  || 0) + amt;
+    }
+    return totals;
+  }, [allRawForTotals]);
+
   if (!isOwner && !can('manage_invoices')) {
     return <AccessRestricted message="You don't have permission to view invoices." />;
   }
@@ -160,12 +179,21 @@ export default function InvoicesPage() {
 
       {/* Status Tabs */}
       <div className="flex gap-1 flex-wrap">
-        {STATUSES.map(s => (
-          <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${statusFilter === s ? 'bg-[#050A30] text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
-            {s === 'ALL' ? `All (${counts.total})` : s}
-          </button>
-        ))}
+        {STATUSES.map(s => {
+          const tabTotal = statusTotals[s] || 0;
+          const isActive = statusFilter === s;
+          return (
+            <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
+              className={`flex flex-col items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive ? 'bg-[#050A30] text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
+              <span>{s === 'ALL' ? `All (${allRawForTotals.length})` : s}</span>
+              {tabTotal > 0 && (
+                <span className={`text-[9px] font-medium mt-0.5 ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>
+                  {tabTotal >= 1000000 ? `₦${(tabTotal / 1000000).toFixed(1)}M` : tabTotal >= 1000 ? `₦${(tabTotal / 1000).toFixed(0)}k` : `₦${tabTotal.toFixed(0)}`}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Summary Cards */}

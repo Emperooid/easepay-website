@@ -80,6 +80,7 @@ export default function SalesPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [invoiceStatus, setInvoiceStatus] = useState('Unpaid');
   const [vatEnabled, setVatEnabled] = useState(false);
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
@@ -206,6 +207,7 @@ export default function SalesPage() {
     if (cart.length === 0) { toast.error('Add items to cart first'); return; }
     createMutation.mutate({
       customerName: customerName.trim() || 'Walk-in Customer',
+      customerPhone: customerPhone.trim() || undefined,
       paymentMethod,
       status: invoiceStatus,
       amount: total,
@@ -230,6 +232,7 @@ export default function SalesPage() {
   const resetNew = () => {
     setCart([]);
     setCustomerName('');
+    setCustomerPhone('');
     setInvoiceStatus('Unpaid');
     setVatEnabled(false);
     setDiscountValue('');
@@ -527,6 +530,7 @@ export default function SalesPage() {
                 {cart.length > 0 && <button onClick={() => setCart([])} className="text-xs text-red-400 hover:text-red-600">Clear all</button>}
               </div>
               <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name (optional)" className="mt-3 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-gray-50" />
+              <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Customer phone (optional)" type="tel" className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#050A30] bg-gray-50" />
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 max-h-[220px] space-y-2">

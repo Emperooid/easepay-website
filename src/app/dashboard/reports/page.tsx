@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getSales, getExpenses, getInvoices } from '@/services/apiService';
+import { getSales, getExpenses, getInvoices, getProfitLossReport } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,7 +11,7 @@ import {
 import {
   Loader2, TrendingUp, ArrowUp, ArrowDown,
   Download, Calendar, RefreshCw, Search,
-  Receipt, ChevronLeft, ChevronRight,
+  Receipt, ChevronLeft, ChevronRight, BarChart3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -48,9 +48,18 @@ export default function ReportsPage() {
     queryFn: () => getExpenses({ limit: 1000 }),
   });
 
+  const { data: plData } = useQuery({
+    queryKey: ['profit-loss-report', selectedMonth + 1, selectedYear],
+    queryFn: () => getProfitLossReport({ month: selectedMonth + 1, year: selectedYear }),
+    retry: false,
+  });
+
   const isLoading = sl || il || el;
 
   const refetchAll = () => { refetchSales(); refetchInv(); refetchExp(); };
+
+  // Normalise P&L payload — fall back to locally computed values
+  const plPayload: any = (plData?.data as any) || (plData as any) || {};
 
   // ── Normalise raw arrays ──────────────────────────────────────────────────
   const rawSales: any[] = useMemo(() => {
@@ -367,6 +376,31 @@ export default function ReportsPage() {
               </div>
               <p className="text-xl font-bold text-yellow-800">{formatCurrency(totalTax)}</p>
               <p className="text-xs text-yellow-600 mt-1">VAT from invoices &amp; sales</p>
+            </div>
+          </div>
+
+          {/* ── P&L Breakdown ── */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+              <BarChart3 size={15} className="text-[#050A30]" />
+              <h3 className="text-sm font-bold text-gray-900">Profit &amp; Loss Breakdown</h3>
+              <span className="ml-auto text-xs text-gray-400">{MONTHS[selectedMonth]} {selectedYear}</span>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {[
+                { label: 'Total Revenue',      value: plPayload?.totalRevenue    ?? totalRevenue,   color: 'text-green-600',   sign: '+' },
+                { label: 'Cost of Goods',      value: plPayload?.costOfGoods     ?? plPayload?.cogs ?? 0, color: 'text-red-500',    sign: '-' },
+                { label: 'Gross Profit',       value: plPayload?.grossProfit     ?? (totalRevenue - (plPayload?.costOfGoods ?? plPayload?.cogs ?? 0)), color: 'text-blue-600', sign: '' },
+                { label: 'Operating Expenses', value: plPayload?.totalExpenses   ?? totalExpenses,  color: 'text-orange-600',  sign: '-' },
+                { label: 'Net Profit',         value: plPayload?.netProfit       ?? monthlyProfit,  color: monthlyProfit >= 0 ? 'text-[#050A30] font-extrabold' : 'text-red-600 font-extrabold', sign: '' },
+              ].map(({ label, value, color, sign }) => (
+                <div key={label} className="flex items-center justify-between px-5 py-3">
+                  <p className="text-sm text-gray-600">{label}</p>
+                  <p className={`text-sm font-bold ${color}`}>
+                    {sign}{formatCurrency(Math.abs(Number(value)))}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 

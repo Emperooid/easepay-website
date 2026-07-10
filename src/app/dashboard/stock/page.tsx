@@ -1,21 +1,20 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getInventory, createProduct, updateProduct, deleteProduct } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, Search, Loader2, Package, Pencil, Trash2, X, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Loader2, Package, Pencil, Trash2, X, ChevronDown, SlidersHorizontal, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePermissions } from '@/hooks/usePermissions';
 import { AccessRestricted } from '@/components/ui/AccessRestricted';
 
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   'General', 'Food & Beverages', 'Electronics', 'Clothing & Fashion',
   'Health & Beauty', 'Home & Garden', 'Sports & Fitness', 'Automotive',
   'Books & Stationery', 'Liquid', 'Other',
 ];
-const STATUS_OPTIONS = ['Available', 'Out of Stock', 'Low Stock', 'Draft'];
-const UNIT_OPTIONS = [
+const DEFAULT_UNIT_OPTIONS = [
   { label: 'Pieces (Pcs)', value: 'Pcs' },
   { label: 'Kilograms (Kg)', value: 'Kg' },
   { label: 'Grams (g)', value: 'g' },
@@ -32,6 +31,7 @@ const UNIT_OPTIONS = [
   { label: 'Boxes', value: 'Boxes' },
   { label: 'Pairs', value: 'Pairs' },
 ];
+const STATUS_OPTIONS = ['Available', 'Out of Stock', 'Low Stock', 'Draft'];
 const ITEMS_PER_PAGE = 10;
 
 type ModalMode = 'add' | 'edit' | null;
@@ -59,6 +59,20 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function StockPage() {
   const { isOwner, can } = usePermissions();
+  const [CATEGORIES, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [UNIT_OPTIONS, setUnitOptions] = useState(DEFAULT_UNIT_OPTIONS);
+
+  useEffect(() => {
+    try {
+      const cats = localStorage.getItem('custom_item_categories');
+      if (cats) setCategories(JSON.parse(cats));
+    } catch {}
+    try {
+      const units = localStorage.getItem('custom_unit_options');
+      if (units) setUnitOptions(JSON.parse(units));
+    } catch {}
+  }, []);
+
   const [modal, setModal] = useState<ModalMode>(null);
   const [editItem, setEditItem] = useState<any>(null);
   const [search, setSearch] = useState('');
@@ -67,7 +81,7 @@ export default function StockPage() {
   const [form, setForm] = useState({
     name: '', category: '', unitPrice: '', costPrice: '', quantity: '',
     kg: '', description: '', barcode: '', status: '', lowStockThreshold: '5',
-    expiryDate: '', manufacturingDate: '',
+    expiryDate: '', manufacturingDate: '', color: '',
   });
   const qc = useQueryClient();
 
@@ -103,7 +117,7 @@ export default function StockPage() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', category: '', unitPrice: '', costPrice: '', quantity: '', kg: 'Pcs', description: '', barcode: '', status: '', lowStockThreshold: '5', expiryDate: '', manufacturingDate: '' });
+    setForm({ name: '', category: '', unitPrice: '', costPrice: '', quantity: '', kg: 'Pcs', description: '', barcode: '', status: '', lowStockThreshold: '5', expiryDate: '', manufacturingDate: '', color: '' });
     setModal('add');
   };
 
@@ -118,6 +132,7 @@ export default function StockPage() {
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
       expiryDate: p.expiryDate ? String(p.expiryDate).slice(0, 10) : '',
       manufacturingDate: p.manufacturingDate ? String(p.manufacturingDate).slice(0, 10) : '',
+      color: p.color || '',
     });
     setModal('edit');
   };
@@ -141,6 +156,7 @@ export default function StockPage() {
       status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
       expiryDate: form.expiryDate ? new Date(form.expiryDate).toISOString() : undefined,
       manufacturingDate: form.manufacturingDate ? new Date(form.manufacturingDate).toISOString() : undefined,
+      color: form.color || undefined,
     };
   };
 
@@ -166,6 +182,21 @@ export default function StockPage() {
 
   const isPending = createMut.isPending || updateMut.isPending;
 
+  const stats = useMemo(() => {
+    let totalUnits = 0, sellWorth = 0, costWorth = 0, lowCount = 0, outCount = 0;
+    for (const p of allProducts) {
+      const qty  = p.quantity ?? 0;
+      const sp   = p.unitPrice ?? 0;
+      const cp   = p.costPrice ?? 0;
+      totalUnits += qty;
+      sellWorth  += sp * qty;
+      costWorth  += cp * qty;
+      if (qty === 0) outCount++;
+      else if (qty <= (p.lowStockThreshold ?? 5)) lowCount++;
+    }
+    return { total: allProducts.length, totalUnits, sellWorth, costWorth, lowCount, outCount };
+  }, [allProducts]);
+
   const pageNumbers = () => {
     const pages: (number | '...')[] = [];
     if (totalPages <= 7) {
@@ -182,6 +213,36 @@ export default function StockPage() {
 
   return (
     <div className="space-y-4">
+      {/* ── Summary stats ── */}
+      {!isLoading && allProducts.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Total Products', value: stats.total,                          icon: Package,       color: 'text-[#050A30]',  bg: 'bg-[#050A30]/5', fmt: 'n' },
+            { label: 'Total Units',    value: stats.totalUnits,                      icon: TrendingUp,    color: 'text-blue-600',   bg: 'bg-blue-50',     fmt: 'n' },
+            { label: 'Sell Value',     value: formatCurrency(stats.sellWorth),       icon: DollarSign,    color: 'text-green-600',  bg: 'bg-green-50',    fmt: 's' },
+            { label: 'Stock Cost',     value: formatCurrency(stats.costWorth),       icon: DollarSign,    color: 'text-orange-600', bg: 'bg-orange-50',   fmt: 's' },
+          ].map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg}`}>
+                <Icon size={15} className={color} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400 font-medium">{label}</p>
+                <p className={`font-bold text-sm truncate ${color}`}>{value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!isLoading && (stats.lowCount > 0 || stats.outCount > 0) && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800 font-medium">
+          <AlertTriangle size={13} className="text-yellow-600 flex-shrink-0" />
+          {stats.outCount > 0 && <span>{stats.outCount} out of stock</span>}
+          {stats.outCount > 0 && stats.lowCount > 0 && <span className="text-yellow-400">·</span>}
+          {stats.lowCount > 0 && <span>{stats.lowCount} low stock</span>}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-0">
@@ -256,7 +317,23 @@ export default function StockPage() {
                           className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="px-3 py-2.5 font-medium text-gray-900 max-w-[140px] truncate">{p.name}</td>
+                      <td className="px-3 py-2.5 max-w-[160px]">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            {p.color && (
+                              <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300"
+                                style={{ backgroundColor: p.color }} />
+                            )}
+                            <span className="font-medium text-gray-900 truncate text-sm">{p.name}</span>
+                          </div>
+                          {p.expiryDate && (() => {
+                            const days = Math.ceil((new Date(p.expiryDate).getTime() - Date.now()) / 86400000);
+                            const label = days < 0 ? `Exp ${Math.abs(days)}d ago` : days === 0 ? 'Exp today' : `Exp in ${days}d`;
+                            const cls = days < 0 ? 'text-red-500 bg-red-50' : days <= 30 ? 'text-yellow-700 bg-yellow-50' : 'text-green-600 bg-green-50';
+                            return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded self-start ${cls}`}>{label}</span>;
+                          })()}
+                        </div>
+                      </td>
                       <td className="px-3 py-2.5 text-gray-400 text-xs hidden md:table-cell">{p.barcode || '—'}</td>
                       <td className="px-3 py-2.5 text-gray-500 text-xs">{p.category}</td>
                       <td className="px-3 py-2.5 text-gray-700 font-medium">{p.quantity}</td>
@@ -460,15 +537,41 @@ export default function StockPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Description (optional)</label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Color, size, variant..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Description (optional)</label>
+                  <input
+                    type="text"
+                    value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                    placeholder="Size, variant..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Color (optional)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={form.color || '#ffffff'}
+                      onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                      className="w-10 h-9 rounded border border-gray-300 cursor-pointer p-0.5"
+                    />
+                    <input
+                      type="text"
+                      value={form.color}
+                      onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
+                      placeholder="#hex or name"
+                      className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {form.color && (
+                      <button type="button" onClick={() => setForm(f => ({ ...f, color: '' }))}
+                        className="text-gray-400 hover:text-gray-600">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

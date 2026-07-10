@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { getExpenses, createExpense, deleteExpense, updateExpense, getExpense } from '@/services/apiService';
+import { getExpenses, createExpense, deleteExpense, updateExpense, getExpense, uploadImage } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import {
@@ -11,7 +11,7 @@ import {
   Banknote, CreditCard, ArrowLeftRight, X, ShoppingBag,
   Zap, Home, Truck, Users, Megaphone, Wrench, Package,
   Wifi, HelpCircle, MoreHorizontal,
-  ChevronLeft, ChevronRight, Lock,
+  ChevronLeft, ChevronRight, Lock, Paperclip, ImageIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -75,6 +75,8 @@ export default function ExpensesPage() {
     paymentMethod: 'CASH', vendor: '', vatAmount: '',
   });
   const [lastExpense, setLastExpense] = useState<any>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
   const qc = useQueryClient();
 
   // Load existing expense data when editing
@@ -149,12 +151,28 @@ export default function ExpensesPage() {
     return raw.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
   }, [data]);
 
-  const resetForm = () => setForm({ amount: '', category: '', description: '', date: new Date().toISOString().split('T')[0], paymentMethod: 'CASH', vendor: '', vatAmount: '' });
+  const resetForm = () => {
+    setForm({ amount: '', category: '', description: '', date: new Date().toISOString().split('T')[0], paymentMethod: 'CASH', vendor: '', vatAmount: '' });
+    setReceiptFile(null);
+  };
 
   const [vatOverrideConfirmed, setVatOverrideConfirmed] = useState(false);
 
-  const submitExpense = () => {
+  const submitExpense = async () => {
     const catName = getCatInfo(form.category)?.name || form.category;
+    let receiptUrl: string | undefined;
+
+    if (receiptFile) {
+      try {
+        setReceiptUploading(true);
+        receiptUrl = await uploadImage(receiptFile);
+      } catch {
+        toast.error('Receipt upload failed — saving expense without it');
+      } finally {
+        setReceiptUploading(false);
+      }
+    }
+
     const payload = {
       amount: parseFloat(form.amount),
       category: form.category,
@@ -163,6 +181,7 @@ export default function ExpensesPage() {
       paymentMethod: form.paymentMethod,
       vendor: form.vendor || undefined,
       vatAmount: form.vatAmount ? parseFloat(form.vatAmount) : undefined,
+      receiptUrl,
     };
     if (isEditing) updateMut.mutate(payload);
     else createMut.mutate(payload);
@@ -328,6 +347,37 @@ export default function ExpensesPage() {
             </div>
           </div>
 
+          {/* Receipt Attachment */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Receipt / Attachment (Optional)</label>
+            {receiptFile ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 border border-gray-300 rounded-lg bg-gray-50">
+                {receiptFile.type.startsWith('image/') ? (
+                  <ImageIcon size={15} className="text-blue-500 flex-shrink-0" />
+                ) : (
+                  <Paperclip size={15} className="text-gray-400 flex-shrink-0" />
+                )}
+                <span className="text-sm text-gray-700 flex-1 truncate">{receiptFile.name}</span>
+                <span className="text-xs text-gray-400">{(receiptFile.size / 1024).toFixed(0)} KB</span>
+                <button type="button" onClick={() => setReceiptFile(null)}
+                  className="text-gray-400 hover:text-red-500 transition-colors">
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#050A30] hover:bg-gray-50 transition-colors">
+                <Paperclip size={15} className="text-gray-400" />
+                <span className="text-sm text-gray-500">Click to attach receipt (image or PDF)</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) setReceiptFile(f); e.target.value = ''; }}
+                />
+              </label>
+            )}
+          </div>
+
           {/* Payment Method */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Method</label>
@@ -341,9 +391,13 @@ export default function ExpensesPage() {
             </div>
           </div>
 
-          <button type="submit" disabled={createMut.isPending || updateMut.isPending}
+          <button type="submit" disabled={createMut.isPending || updateMut.isPending || receiptUploading}
             className="w-full py-3 bg-[#050A30] text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#0a1460] transition-colors">
-            {(createMut.isPending || updateMut.isPending) ? <><Loader2 size={15} className="animate-spin" /> Saving...</> : isEditing ? 'Save Changes' : 'Add Expense'}
+            {receiptUploading
+              ? <><Loader2 size={15} className="animate-spin" /> Uploading receipt...</>
+              : (createMut.isPending || updateMut.isPending)
+              ? <><Loader2 size={15} className="animate-spin" /> Saving...</>
+              : isEditing ? 'Save Changes' : 'Add Expense'}
           </button>
         </form>
       </div>
