@@ -226,7 +226,8 @@ export default function DashboardPage() {
     const outOfStock = inventoryForLookup.filter((p: any) => (p.quantity ?? 0) === 0);
     const lowStock   = inventoryForLookup.filter((p: any) => {
       const qty = p.quantity ?? 0;
-      return qty > 0 && qty <= (p.lowStockThreshold ?? 5);
+      const threshold = p.minStock != null ? Number(p.minStock) : 5;
+      return qty > 0 && qty <= threshold;
     });
     if (outOfStock.length > 0 || lowStock.length > 0) {
       const parts: string[] = [];

@@ -38,8 +38,10 @@ type ModalMode = 'add' | 'edit' | null;
 
 function getProductStatus(p: any): string {
   if (p.status === 'draft') return 'Draft';
-  if (p.quantity === 0) return 'Out of Stock';
-  if (p.quantity <= (p.lowStockThreshold || 5)) return 'Low Stock';
+  const qty = p.quantity ?? 0;
+  if (qty === 0) return 'Out of Stock';
+  const threshold = p.minStock != null ? Number(p.minStock) : 5;
+  if (qty <= threshold) return 'Low Stock';
   return 'Available';
 }
 
@@ -129,7 +131,7 @@ export default function StockPage() {
       quantity: String(p.quantity || ''),
       kg: p.unit || 'Pcs', description: p.description || '',
       barcode: p.barcode || '', status: p.status || '',
-      lowStockThreshold: String(p.lowStockThreshold ?? 5),
+      lowStockThreshold: String(p.minStock ?? 5),
       expiryDate: p.expiryDate ? String(p.expiryDate).slice(0, 10) : '',
       manufacturingDate: p.manufacturingDate ? String(p.manufacturingDate).slice(0, 10) : '',
       color: p.color || '',
@@ -152,7 +154,8 @@ export default function StockPage() {
       unit: form.kg || 'pcs',
       description: form.description || undefined,
       barcode: form.barcode || undefined,
-      lowStockThreshold: parseInt(form.lowStockThreshold) || 5,
+      minStock: parseFloat(form.lowStockThreshold) || 0,
+      lowStockThreshold: parseFloat(form.lowStockThreshold) || 0,
       status: isDraft ? 'draft' : (form.status?.toLowerCase().replace(' ', '-') || 'available'),
       expiryDate: form.expiryDate ? new Date(form.expiryDate).toISOString() : undefined,
       manufacturingDate: form.manufacturingDate ? new Date(form.manufacturingDate).toISOString() : undefined,
@@ -192,7 +195,7 @@ export default function StockPage() {
       sellWorth  += sp * qty;
       costWorth  += cp * qty;
       if (qty === 0) outCount++;
-      else if (qty <= (p.lowStockThreshold ?? 5)) lowCount++;
+      else if (qty <= (p.minStock != null ? Number(p.minStock) : 5)) lowCount++;
     }
     return { total: allProducts.length, totalUnits, sellWorth, costWorth, lowCount, outCount };
   }, [allProducts]);
