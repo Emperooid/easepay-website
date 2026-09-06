@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Papa from 'papaparse';
 import { getSales, getExpenses, getInvoices, getMonthlyTax, getQuarterlyTax } from '@/services/apiService';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -201,15 +202,12 @@ export default function TaxPage() {
     if (!isOwner && !can('export_data')) { toast.error('You do not have permission to export tax data.'); return; }
     if (!canSub('csvExport')) { toast.error('CSV export is available on Basic and Business plans. Please upgrade.'); return; }
     if (!entries.length) { toast.error('No tax data to export'); return; }
-    const rows = [
-      ['Date', 'Name', 'Type', 'Direction', 'Tax Amount'],
-      ...entries.map(e => [
-        e.date ? new Date(e.date).toLocaleDateString('en-GB') : '',
-        e.name, e.type, e.direction === 'in' ? 'VAT Collected' : 'VAT Paid',
-        e.taxAmount.toFixed(2),
-      ]),
-    ].map(r => r.join(',')).join('\n');
-    const blob = new Blob([rows], { type: 'text/csv' });
+    const rows = entries.map(e => ({
+      Date: e.date ? new Date(e.date).toLocaleDateString('en-GB') : '',
+      Name: e.name, Type: e.type, Direction: e.direction === 'in' ? 'VAT Collected' : 'VAT Paid',
+      'Tax Amount': e.taxAmount.toFixed(2),
+    }));
+    const blob = new Blob([Papa.unparse(rows)], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url;

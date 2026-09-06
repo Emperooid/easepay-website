@@ -3,6 +3,7 @@
 # AI assistant config files — never commit these
 CLAUDE.md
 AGENTS.md
+*.zip
 
 # dependencies
 /node_modules

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Papa from 'papaparse';
 import { getSales, getExpenses, getInvoices, getProfitLossReport } from '@/services/apiService';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -215,16 +216,13 @@ export default function ReportsPage() {
     if (!isOwner && !can('export_data')) { toast.error('You do not have permission to export reports.'); return; }
     if (!canSub('csvExport')) { toast.error('CSV export is available on Basic and Business plans. Please upgrade.'); return; }
     if (!allTransactions.length) { toast.error('No data to export'); return; }
-    const rows = [
-      ['Date', 'Type', 'Name', 'Amount'],
-      ...allTransactions.map(tx => [
-        tx.date ? new Date(tx.date).toLocaleDateString('en-GB') : '',
-        tx._txType === 'invoice' ? 'Invoice' : tx._txType === 'sale' ? 'Sale' : 'Expense',
-        tx.name || '',
-        tx.amount.toFixed(2),
-      ]),
-    ].map(r => r.join(',')).join('\n');
-    const blob = new Blob([rows], { type: 'text/csv' });
+    const rows = allTransactions.map(tx => ({
+      Date: tx.date ? new Date(tx.date).toLocaleDateString('en-GB') : '',
+      Type: tx._txType === 'invoice' ? 'Invoice' : tx._txType === 'sale' ? 'Sale' : 'Expense',
+      Name: tx.name || '',
+      Amount: tx.amount.toFixed(2),
+    }));
+    const blob = new Blob([Papa.unparse(rows)], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

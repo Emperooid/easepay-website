@@ -86,6 +86,7 @@ export default function SettingsPage() {
       items: [
         { href: '/dashboard/settings/invoice-template', icon: FileText, label: 'Invoice Template', desc: 'Customize invoice appearance' },
         { href: '/dashboard/settings/import-data', icon: Download, label: 'Import Data', desc: 'Import products from CSV' },
+        { href: '/dashboard/settings/export-data', icon: Download, label: 'Export Data', desc: 'Download inventory, sales, expenses and invoices' },
         { href: '/dashboard/settings/categories', icon: Package, label: 'Item Categories', desc: 'Manage product categories' },
         { href: '/dashboard/settings/units', icon: Package, label: 'Measuring Units', desc: 'Manage units of measurement' },
       ],
